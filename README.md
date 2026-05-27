@@ -37,6 +37,7 @@ Use **API Suite** sandbox credentials in Cloud Run — not “Credentials for Sc
 | POST | `/deliveroo/menu/scenario10` | Scenario 10: GET then PUT reset stock (`step=get`, `put`, or `both`) |
 | POST | `/deliveroo/menu/scenario11` | Scenario 11: POST initial unavailabilities (`step=post`, default) |
 | POST | `/deliveroo/menu/scenario12` | Scenario 12: POST whole_milk unavailable after Start (`step=post`) |
+| POST | `/deliveroo/menu/scenario13` | Scenario 13: upload ≥100 items, wait webhook, POST unavailabilities (`step=all`) |
 | POST | `/webhooks/deliveroo` | Order events + `menu.upload_result` |
 
 ### Menu upload (`/deliveroo/menu/upload`)
@@ -48,7 +49,7 @@ Calls official v1 endpoint:
 Query/body parameters:
 
 - `menuId` / `menu_id` — **must match** the ID entered in the Developer Portal scenario
-- `scenario` — `mealtimes` (default), `bundles` (4), `nochange` (5), `webhook` (6), `imagecache` (7), or `default`
+- `scenario` — `mealtimes` (default), `bundles` (4), `nochange` (5), `webhook` (6), `imagecache` (7), `scenario13` (13), or `default`
 - `siteId` / `site_id` — optional (defaults to `DELIVEROO_LOCATION_ID`, e.g. `100121`)
 - `siteDrnId` / `site_drn_id` — optional scenario parameter; resolved to `site_id` when possible
 
@@ -139,6 +140,26 @@ curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario12?step=post" \
   -H "Content-Type: application/json" \
   -d '{"menuId":"<portal-menu-id>","site_drn_id":"607326a3-ef2d-4b8b-b013-a91c52c3954f"}'
 ```
+
+**Scenario 13:** Do **not** send unavailabilities until **`menu.upload_result`** webhook arrives (unless upload returned `MATCH_EXISTING_MENU`). Flow: **Start** → upload menu with **≥100 items** → wait for webhook (~1 min) → **POST** item unavailabilities.
+
+```bash
+# All-in-one (blocks up to 90s waiting for webhook on this Cloud Run instance):
+curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario13?step=all" \
+  -H "Content-Type: application/json" \
+  -d '{"menuId":"<portal-menu-id>","site_drn_id":"607326a3-ef2d-4b8b-b013-a91c52c3954f"}'
+
+# Or split (recommended on multi-instance Cloud Run):
+curl -X POST "https://<cloud-run-url>/deliveroo/menu/upload?scenario=scenario13" \
+  -H "Content-Type: application/json" \
+  -d '{"menuId":"<portal-menu-id>","site_drn_id":"607326a3-ef2d-4b8b-b013-a91c52c3954f"}'
+curl "https://<cloud-run-url>/deliveroo/menu/webhook-status?menuId=<portal-menu-id>"
+curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario13?step=post" \
+  -H "Content-Type: application/json" \
+  -d '{"menuId":"<portal-menu-id>","site_drn_id":"607326a3-ef2d-4b8b-b013-a91c52c3954f"}'
+```
+
+POST sets `s13-item-001` to **unavailable** after webhook.
 
 **Scenario 6:** Portal `menu_id` can stay **`123156468`**. Flow: **Start** → within **30s** upload with `scenario=webhook` → wait **1–5 min** for Deliveroo `POST` to `/webhooks/deliveroo` (must return **200**).
 

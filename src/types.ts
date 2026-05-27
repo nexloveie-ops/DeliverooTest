@@ -118,6 +118,26 @@ export type Scenario12GetResult = ItemUnavailabilitiesResult & {
   expectedAfterSiteOpen: ReplaceAllUnavailabilitiesPayload;
 };
 
+export type Scenario13PostResult = Scenario11PostResult;
+
+export type Scenario13RunResult = {
+  upload?: UploadMenuResult;
+  webhookWait?: {
+    received: boolean;
+    waitedMs: number;
+    latestHttpStatus?: number;
+    events: Array<{
+      eventId: string;
+      httpStatus?: number;
+      occurredAt: string;
+      processingError?: string;
+    }>;
+  };
+  post?: Scenario13PostResult;
+  itemCount?: number;
+  error?: string;
+};
+
 export type UploadMenuResult = {
   method: "PUT";
   url: string;

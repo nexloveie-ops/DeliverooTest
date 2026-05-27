@@ -12,9 +12,12 @@ import {
   runScenario10Unavailabilities,
   runScenario11Unavailabilities,
   runScenario12Unavailabilities,
+  runScenario13MenuAndUnavailabilities,
+  SCENARIO13_UNAVAILABILITY_POST,
   updateItemUnavailabilities,
   uploadDeliverooMenu
 } from "./deliveroo.js";
+import { SCENARIO13_ITEM_COUNT } from "./menuPayloads.js";
 import { forwardToOwnSystem } from "./forwarder.js";
 import type { NormalizedMenuEvent, NormalizedOrderEvent } from "./types.js";
 import {
@@ -198,18 +201,32 @@ app.post("/deliveroo/menu/sync", async (_req, res) => {
 
 const parseScenario = (
   value: string | undefined
-): "default" | "mealtimes" | "bundles" | "nochange" | "webhook" | "imagecache" => {
+): "default" | "mealtimes" | "bundles" | "nochange" | "webhook" | "imagecache" | "scenario13" => {
   if (
     value === "bundles" ||
     value === "mealtimes" ||
     value === "default" ||
     value === "nochange" ||
     value === "webhook" ||
-    value === "imagecache"
+    value === "imagecache" ||
+    value === "scenario13"
   ) {
     return value;
   }
   return "mealtimes";
+};
+
+const parseScenario13Step = (
+  query: Record<string, unknown>,
+  body?: Record<string, unknown>
+): "upload" | "wait" | "post" | "all" => {
+  const raw =
+    (typeof query.step === "string" ? query.step : undefined) ??
+    (typeof body?.step === "string" ? body.step : undefined);
+  if (raw === "upload" || raw === "wait" || raw === "post" || raw === "all") {
+    return raw;
+  }
+  return "all";
 };
 
 const parseDoubleUpload = (body?: Record<string, unknown>): boolean => {
@@ -222,7 +239,7 @@ const handleMenuUpload = async (
     menuId?: string;
     siteId?: string;
     siteDrnId?: string;
-    scenario?: "default" | "mealtimes" | "bundles" | "nochange" | "webhook" | "imagecache";
+    scenario?: "default" | "mealtimes" | "bundles" | "nochange" | "webhook" | "imagecache" | "scenario13";
     payload?: unknown;
     doubleUpload?: boolean;
     delayMs?: number;
@@ -251,6 +268,10 @@ const handleMenuUpload = async (
               : "Scenario 5: use scenario=nochange (same JSON as mealtimes). Prefer double:true once per Start."
             : put.scenario === "imagecache"
               ? "Scenario 7: payload includes ITEM image URL with cache headers support (HEAD should return ETag or Last-Modified)."
+              : put.scenario === "scenario13"
+                ? put.matchExistingMenu
+                  ? "Scenario 13: MATCH_EXISTING_MENU — upload a differing body or use a fresh menu_id after Start."
+                  : `Scenario 13: uploaded ${SCENARIO13_ITEM_COUNT} items. Wait for menu.upload_result webhook, then POST unavailabilities (step=post or /scenario13?step=all).`
             : "Per Deliveroo docs: trigger scenario Start first, then call this within ~30s using API Suite sandbox credentials. PUT must match menu_id in the portal."
     });
   } catch (error) {
@@ -273,7 +294,7 @@ const readUploadParams = (
   menuId?: string;
   siteId?: string;
   siteDrnId?: string;
-  scenario?: "default" | "mealtimes" | "bundles" | "nochange" | "webhook" | "imagecache";
+  scenario?: "default" | "mealtimes" | "bundles" | "nochange" | "webhook" | "imagecache" | "scenario13";
   payload?: unknown;
   doubleUpload?: boolean;
   delayMs?: number;
@@ -618,6 +639,56 @@ app.post("/deliveroo/menu/scenario12", async (req, res) => {
           : step === "get"
             ? "Scenario 12 GET: verify orange_juice + whole_milk still unavailable, granola available."
             : "Scenario 12: POST whole_milk then optional GET."
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    res.status(500).json({ ok: false, error: message, detail: deliverooAxiosDetail(error) });
+  }
+});
+
+app.post("/deliveroo/menu/scenario13", async (req, res) => {
+  const body = req.body as Record<string, unknown>;
+  const siteParams = readUnavailabilitySiteParams(req.query, body);
+  const step = parseScenario13Step(req.query as Record<string, unknown>, body);
+  const webhookTimeoutMs =
+    typeof req.query.webhookTimeoutMs === "string"
+      ? Number(req.query.webhookTimeoutMs)
+      : typeof body.webhookTimeoutMs === "number"
+        ? body.webhookTimeoutMs
+        : undefined;
+
+  if (!siteParams.menuId) {
+    res.status(400).json({
+      ok: false,
+      error: "menuId is required for Scenario 13 (same menu_id as Portal)"
+    });
+    return;
+  }
+
+  try {
+    const result = await runScenario13MenuAndUnavailabilities({
+      menuId: siteParams.menuId,
+      siteId: siteParams.siteId,
+      siteDrnId: siteParams.siteDrnId,
+      step,
+      webhookTimeoutMs: Number.isFinite(webhookTimeoutMs) ? webhookTimeoutMs : undefined
+    });
+    const ok = step !== "all" || (!result.error && Boolean(result.post));
+    res.status(ok ? 200 : 504).json({
+      ok,
+      step,
+      menuId: siteParams.menuId,
+      itemCount: SCENARIO13_ITEM_COUNT,
+      unavailabilityPost: SCENARIO13_UNAVAILABILITY_POST,
+      ...result,
+      hint:
+        step === "upload"
+          ? "Scenario 13: PUT ≥100 items after Start. Poll webhook-status until received, then step=post."
+          : step === "wait"
+            ? "Scenario 13: waiting for menu.upload_result on this instance (up to 90s)."
+            : step === "post"
+              ? "Scenario 13: POST unavailabilities only — call after menu.upload_result webhook."
+              : "Scenario 13: upload → wait for webhook → POST first item unavailable. Split steps if multi-instance Cloud Run."
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";

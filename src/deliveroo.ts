@@ -8,8 +8,11 @@ import {
   countBundlesInPayload,
   serializeNoChangeMenuBody,
   type MenuScenario,
+  scenario13ItemId,
+  SCENARIO13_ITEM_COUNT,
   type WebhookUploadBodyStrategy
 } from "./menuPayloads.js";
+import { waitForMenuUploadWebhook } from "./menuWebhookStore.js";
 import type {
   ItemAvailabilityStatus,
   ItemUnavailabilityUpdate,
@@ -27,6 +30,8 @@ import type {
   Scenario11PostResult,
   Scenario12GetResult,
   Scenario12PostResult,
+  Scenario13PostResult,
+  Scenario13RunResult,
   UploadMenuResult
 } from "./types.js";
 
@@ -342,7 +347,8 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
     menuId = `menu-${Date.now()}`;
   }
   const url = `${config.deliverooBaseUrl}/menu/v1/brands/${brandId}/menus/${menuId}`;
-  const menuRevision = scenario === "webhook" ? String(Date.now()) : undefined;
+  const menuRevision =
+    scenario === "webhook" || scenario === "scenario13" ? String(Date.now()) : undefined;
 
   if (scenario === "nochange" && options?.doubleUpload) {
     const delayMs = options.delayMs ?? 10_000;
@@ -1265,6 +1271,79 @@ export const runScenario12Unavailabilities = async (
       ...getResult,
       parsed,
       expectedAfterSiteOpen: SCENARIO12_AFTER_SITE_OPEN
+    };
+  }
+
+  return out;
+};
+
+/** Scenario 13: first large-menu item marked unavailable after upload webhook. */
+export const SCENARIO13_UNAVAILABILITY_TARGET_ID = scenario13ItemId(1);
+
+export const SCENARIO13_UNAVAILABILITY_POST: ItemUnavailabilityUpdate[] = [
+  { item_id: SCENARIO13_UNAVAILABILITY_TARGET_ID, status: "unavailable" }
+];
+
+export const runScenario13MenuAndUnavailabilities = async (options?: {
+  menuId?: string;
+  siteId?: string;
+  siteDrnId?: string;
+  step?: "upload" | "wait" | "post" | "all";
+  webhookTimeoutMs?: number;
+}): Promise<Scenario13RunResult> => {
+  const step = options?.step ?? "all";
+  if (!options?.menuId?.trim()) {
+    throw new Error("menuId is required for Scenario 13 (same menu_id as Portal)");
+  }
+  const menuId = options.menuId.trim();
+  const out: Scenario13RunResult = { itemCount: SCENARIO13_ITEM_COUNT };
+
+  if (step === "upload" || step === "all") {
+    out.upload = await uploadDeliverooMenu({
+      menuId,
+      siteId: options.siteId,
+      siteDrnId: options.siteDrnId,
+      scenario: "scenario13"
+    });
+  }
+
+  if (step === "wait" || step === "all") {
+    const webhookWait = await waitForMenuUploadWebhook(menuId, {
+      timeoutMs: options?.webhookTimeoutMs ?? 90_000
+    });
+    out.webhookWait = {
+      received: webhookWait.received,
+      waitedMs: webhookWait.waitedMs,
+      latestHttpStatus: webhookWait.latestHttpStatus,
+      events: webhookWait.events.map((e) => ({
+        eventId: e.eventId,
+        httpStatus: e.httpStatus,
+        occurredAt: e.occurredAt,
+        processingError: e.processingError
+      }))
+    };
+    if (!webhookWait.received) {
+      out.error =
+        "menu.upload_result webhook not received in time on this instance — poll GET /deliveroo/menu/webhook-status or Cloud Run logs, then step=post";
+      if (step === "all") {
+        return out;
+      }
+    }
+  }
+
+  if (step === "post" || step === "all") {
+    if (step === "all" && out.webhookWait && !out.webhookWait.received) {
+      return out;
+    }
+    const result = await updateItemUnavailabilities(SCENARIO13_UNAVAILABILITY_POST, {
+      siteId: options.siteId,
+      siteDrnId: options.siteDrnId,
+      menuId,
+      apiVersion: "v1"
+    });
+    out.post = {
+      ...result,
+      itemUnavailabilities: SCENARIO13_UNAVAILABILITY_POST
     };
   }
 

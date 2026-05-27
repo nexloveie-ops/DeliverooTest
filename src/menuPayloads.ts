@@ -36,7 +36,16 @@ export type MenuScenario =
   | "bundles"
   | "nochange"
   | "webhook"
-  | "imagecache";
+  | "imagecache"
+  | "scenario13";
+
+/** Scenario 13: minimum item count for large-menu upload + webhook gate. */
+export const SCENARIO13_ITEM_COUNT = 100;
+
+export const SCENARIO13_ITEM_ID_PREFIX = "s13-item-";
+
+export const scenario13ItemId = (index: number): string =>
+  `${SCENARIO13_ITEM_ID_PREFIX}${String(index).padStart(3, "0")}`;
 
 const revisionPriceBump = (revision: string): number => {
   const numeric = Number(revision);
@@ -146,7 +155,69 @@ export const buildMenuPayload = (
   if (scenario === "imagecache") {
     return buildMealtimesScenarioPayload(menuId, siteId, revision);
   }
+  if (scenario === "scenario13") {
+    return buildScenario13LargeMenuPayload(menuId, siteId, revision);
+  }
   return buildMealtimesScenarioPayload(menuId, siteId);
+};
+
+/**
+ * Scenario 13: valid menu with ≥100 items (single category + all-day mealtime).
+ */
+export const buildScenario13LargeMenuPayload = (
+  menuId: string,
+  siteId: string,
+  revision: string = String(Date.now())
+): Record<string, unknown> => {
+  const revSuffix = revision.slice(-6);
+  const itemIds: string[] = [];
+  const items: Record<string, unknown>[] = [];
+
+  for (let i = 1; i <= SCENARIO13_ITEM_COUNT; i += 1) {
+    const id = scenario13ItemId(i);
+    itemIds.push(id);
+    items.push(
+      itemBase({
+        id,
+        type: "ITEM",
+        name: { en: `Scenario 13 Item ${i}` },
+        description: { en: `Large menu sandbox item ${i} (rev ${revSuffix})` },
+        operational_name: `s13-item-${i}`,
+        plu: `S13${String(i).padStart(3, "0")}`,
+        price_info: { price: 500 + i, overrides: [] },
+        modifier_ids: [],
+        image: { url: ITEM_IMAGE_CACHEABLE_URL }
+      })
+    );
+  }
+
+  const categoryId = "s13-cat-main";
+  const mealtimeId = "s13-meal-all-day";
+
+  return {
+    name: menuId,
+    site_ids: [siteId],
+    menu: {
+      categories: [{ id: categoryId, name: { en: "All Items" }, item_ids: itemIds }],
+      items,
+      modifiers: [],
+      mealtimes: [
+        {
+          id: mealtimeId,
+          name: { en: "All Day Menu" },
+          description: {
+            en: `Scenario 13 large menu (${SCENARIO13_ITEM_COUNT} items, rev ${revSuffix})`
+          },
+          category_ids: [categoryId],
+          image: { url: WEBHOOK_MEALTIME_COVER_DAY_URL },
+          schedule: [0, 1, 2, 3, 4, 5, 6].map((day) => ({
+            day_of_week: day,
+            time_periods: [{ start: "00:00:00", end: "23:59:00" }]
+          }))
+        }
+      ]
+    }
+  };
 };
 
 /** Stable JPEG covers (curl-verified HTTP 200). Avoid Unsplash + Wikimedia /thumb/ paths. */

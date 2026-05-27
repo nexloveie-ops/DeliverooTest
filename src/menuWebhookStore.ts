@@ -56,6 +56,52 @@ export const getMenuWebhookStatus = (
   return { received: events.length > 0, count: events.length, events };
 };
 
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+/** Poll in-memory webhook store until menu.upload_result (Scenario 13 / 6). */
+export const waitForMenuUploadWebhook = async (
+  menuId: string,
+  options?: { timeoutMs?: number; pollMs?: number; requireHttp200?: boolean }
+): Promise<{
+  received: boolean;
+  events: MenuWebhookRecord[];
+  waitedMs: number;
+  latestHttpStatus?: number;
+}> => {
+  const timeoutMs = options?.timeoutMs ?? 90_000;
+  const pollMs = options?.pollMs ?? 2_000;
+  const requireHttp200 = options?.requireHttp200 ?? true;
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+    const { events } = getMenuWebhookStatus(menuId);
+    const latest = events[0];
+    if (latest) {
+      const ok = !requireHttp200 || latest.httpStatus === 200 || latest.httpStatus === undefined;
+      if (ok) {
+        return {
+          received: true,
+          events,
+          waitedMs: Date.now() - start,
+          latestHttpStatus: latest.httpStatus
+        };
+      }
+    }
+    await sleep(pollMs);
+  }
+
+  const { events } = getMenuWebhookStatus(menuId);
+  return {
+    received: false,
+    events,
+    waitedMs: Date.now() - start,
+    latestHttpStatus: events[0]?.httpStatus
+  };
+};
+
 export const appendWebhookInbound = (entry: WebhookInboundLog): void => {
   recentInbound.unshift(entry);
   if (recentInbound.length > MAX_INBOUND) {

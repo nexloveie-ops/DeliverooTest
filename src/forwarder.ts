@@ -1,7 +1,10 @@
 import axios from "axios";
 import { config } from "./config.js";
 
-export const forwardToOwnSystem = async (body: unknown, kind: "menu" | "order_event"): Promise<void> => {
+export const forwardToOwnSystem = async (
+  body: unknown,
+  kind: "menu" | "order_event" | "menu_event"
+): Promise<void> => {
   if (!config.forwardTargetUrl) {
     return;
   }

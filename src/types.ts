@@ -19,3 +19,26 @@ export type NormalizedOrderEvent = {
   occurredAt?: string;
   payload: unknown;
 };
+
+export type NormalizedMenuEvent = {
+  channel: "deliveroo";
+  eventId: string;
+  eventType: "menu.upload_result";
+  menuId?: string;
+  brandId?: string;
+  siteIds?: string[];
+  httpStatus?: number;
+  occurredAt: string;
+  payload: unknown;
+};
+
+export type UploadMenuResult = {
+  method: "PUT";
+  url: string;
+  brandId: string;
+  siteId: string;
+  menuId: string;
+  siteIds: string[];
+  mealtimesCount: number;
+  deliveroo: unknown;
+};

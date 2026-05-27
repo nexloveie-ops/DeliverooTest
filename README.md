@@ -1,100 +1,135 @@
 # Deliveroo Test Connector
 
-This project is a lightweight Deliveroo connector for testing.
+Lightweight **Partner Platform** connector for sandbox testing: Menu API v1 upload, menu sync, and webhooks (orders + menu upload results).
 
-It is intentionally limited to channel-integration responsibilities:
-- Pull menu data from Deliveroo and expose standardized items
-- Receive Deliveroo webhook events and normalize them
-- Optionally forward normalized payloads to your own system
+Does **not** implement inventory/BOM/reporting (that belongs in your own system).
 
-It does **not** include inventory deduction, BOM rules, or reporting.
+## Architecture (per Deliveroo docs)
+
+| Step | What | Doc |
+|------|------|-----|
+| 1 | OAuth `client_credentials` → access token | [Authentication](https://api-docs.deliveroo.com/docs/authentication) |
+| 2 | `PUT /menu/v1/brands/{brand_id}/menus/{menu_id}` with `name`, `site_ids`, `menu` | [Upload menu](https://api-docs.deliveroo.com/reference/put_v1-brands-brand-id-menus-id) |
+| 3 | Deliveroo processes menu asynchronously | [Menu API Overview](https://api-docs.deliveroo.com/docs/menu-api-overview) |
+| 4 | `menu.upload_result` webhook to your HTTPS endpoint | [Menu Webhook](https://api-docs.deliveroo.com/reference/menu-events-webhook) |
+| 5 | Developer Portal **scenarios** verify API Suite calls in the scenario window | [Credential Types](https://api-docs.deliveroo.com/reference/credentials) |
+
+**Sandbox hosts** ([API and Webhooks](https://api-docs.deliveroo.com/docs/api-and-webhooks)):
+
+- API: `https://api-sandbox.developers.deliveroo.com`
+- OAuth: `https://auth-sandbox.developers.deliveroo.com`
+
+Use **API Suite** sandbox credentials in Cloud Run — not “Credentials for Scenarios API” only.
 
 ## Endpoints
 
-- `GET /healthz`  
-  Health check.
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/healthz` | Health check |
+| POST | `/deliveroo/menu/sync` | `GET` menu v2 by site, normalize items |
+| GET/POST | `/deliveroo/menu/upload` | `PUT` menu v1 (scenario helper) |
+| POST | `/webhooks/deliveroo` | Order events + `menu.upload_result` |
 
-- `POST /deliveroo/menu/sync`  
-  Fetches menu from Deliveroo API, normalizes records, returns JSON, and optionally forwards data.
+### Menu upload (`/deliveroo/menu/upload`)
 
-- `POST /deliveroo/menu/upload`  
-  Uploads a test menu to Deliveroo (`menu/v1`) using OAuth client credentials.  
-  You can pass `menuId` / `menu_id`, and `siteId` / `site_id` or `siteDrnId` / `site_drn_id` in JSON body to match Deliveroo scenario input.
-  If `siteDrnId` cannot be resolved by Sites API, the service falls back to configured/default site.
-  Default payload includes multiple mealtimes (daytime + evening, full 7d/24h coverage) for the mealtimes scenario.
+Calls official v1 endpoint:
 
-- `POST /webhooks/deliveroo`  
-  Receives Deliveroo webhook, validates signature (if configured), performs basic idempotency check, normalizes event, and optionally forwards.
+`PUT {DELIVEROO_BASE_URL}/menu/v1/brands/{brandId}/menus/{menuId}`
+
+Query/body parameters:
+
+- `menuId` / `menu_id` — **must match** the ID entered in the Developer Portal scenario
+- `siteId` / `site_id` — optional (defaults to `DELIVEROO_LOCATION_ID`, e.g. `100121`)
+- `siteDrnId` / `site_drn_id` — optional scenario parameter; resolved to `site_id` when possible
+
+Response includes audit block `put`: `{ method, url, brandId, siteId, menuId, siteIds, mealtimesCount }`.
+
+Default payload includes **2 mealtimes** with cover image, name, description, and non-overlapping schedules covering 7×24h (required by Deliveroo validation).
+
+### Webhooks (`/webhooks/deliveroo`)
+
+Configure in Developer Portal:
+
+- **Order events** → same URL
+- **Menu events** → same URL
+
+HMAC verification ([Securing Webhooks](https://api-docs.deliveroo.com/docs/securing-webhooks)):
+
+- Headers: `X-Deliveroo-Sequence-Guid`, `X-Deliveroo-Hmac-Sha256`
+- Signed payload: `sequenceGuid + " " + rawBody` (raw bytes, no JSON re-serialization)
+- Set `DELIVEROO_WEBHOOK_SECRET` when Deliveroo provides a secret; leave empty to skip verification in test
+
+Menu callbacks:
+
+- `x-deliveroo-payload-type: webhook_menu`
+- `event: menu.upload_result`
+- Normalized and optionally forwarded as `kind: menu_event`
 
 ## Environment variables
 
-Copy `.env.example` to `.env` and fill values:
+Copy `.env.example` → `.env`:
 
-- `PORT`
-- `DELIVEROO_BASE_URL`
-- `DELIVEROO_AUTH_BASE_URL`
-- `DELIVEROO_CLIENT_ID`
-- `DELIVEROO_CLIENT_SECRET`
-- `DELIVEROO_LOCATION_ID` (defaults to `100121`)
-- `DELIVEROO_BRAND_ID` (optional override; auto-read from location when empty)
-- `DELIVEROO_SITE_ID` (optional override; defaults to location id when empty)
-- `DELIVEROO_MENU_ID` (optional override; auto-generated when empty)
-- `DELIVEROO_WEBHOOK_SECRET` (optional; leave empty if Deliveroo did not provide one)
-- `FORWARD_TARGET_URL` (optional)
-- `FORWARD_AUTH_TOKEN` (optional)
+| Variable | Required | Notes |
+|----------|----------|-------|
+| `DELIVEROO_CLIENT_ID` | Yes | API Suite sandbox |
+| `DELIVEROO_CLIENT_SECRET` | Yes | API Suite sandbox |
+| `DELIVEROO_BASE_URL` | Default sandbox API host | |
+| `DELIVEROO_AUTH_BASE_URL` | Default sandbox OAuth host | |
+| `DELIVEROO_LOCATION_ID` | Default `100121` | Maps to `site_ids` in PUT |
+| `DELIVEROO_WEBHOOK_SECRET` | Optional | Menu + order webhook HMAC |
+| `DELIVEROO_BRAND_ID` | Optional | Auto from location |
+| `FORWARD_TARGET_URL` | Optional | Your core system |
 
-## Local run
+## Local workflow (always do this before push)
+
+**Terminal 1:**
 
 ```bash
 npm install
-cp .env.example .env   # fill DELIVEROO_CLIENT_ID / DELIVEROO_CLIENT_SECRET
+cp .env.example .env   # fill client id/secret
 npm run dev
 ```
 
-## Before push / deploy (recommended)
-
-Avoid redeploy loops: prove it locally against Deliveroo sandbox first.
-
-**Terminal 1** — keep the server running:
+**Terminal 2:**
 
 ```bash
-npm run dev
-```
-
-**Terminal 2** — smoke test (must see `PASS`):
-
-```bash
-# generic local menu id
 npm run smoke:local
 
-# or match a Deliveroo scenario run exactly
+# Match a scenario run exactly:
 MENU_ID=123156468 SITE_DRN_ID=607326a3-ef2d-4b8b-b013-a91c52c3954f npm run smoke:local
 ```
 
-Only after `PASS`:
+Must see `PASS` and a `put.url` pointing at `api-sandbox.../menu/v1/brands/.../menus/...`.
 
-1. `git push`
-2. redeploy Cloud Run
-3. trigger the scenario in Developer Portal and call the same upload once more if the scenario window requires it
+## Developer Portal scenarios
 
-If upload fails locally, read the JSON `detail` field (Deliveroo validation message) before pushing.
+1. Fill **menu_id** (and site) → click **Start**
+2. Within **~30 seconds**, trigger upload (browser or curl):
 
-## Deploy to Google Cloud Run (via GitHub Actions)
+```bash
+curl -X POST "https://<cloud-run-url>/deliveroo/menu/upload" \
+  -H "Content-Type: application/json" \
+  -d '{"menuId":"<same as portal>","site_drn_id":"<from scenario parameters>"}'
+```
 
-Workflow file: `.github/workflows/deploy-cloud-run.yml`
+Or browser:
 
-Required GitHub secrets:
-- `GCP_PROJECT_ID`
-- `GCP_WIF_PROVIDER`
-- `GCP_SERVICE_ACCOUNT`
+`https://<cloud-run-url>/deliveroo/menu/upload?menuId=<id>&site_drn_id=<drn>`
 
-After deployment:
-1. Open Cloud Run service URL
-2. Configure Deliveroo webhook URL as `<cloud-run-url>/webhooks/deliveroo`
-3. Send a test event from Deliveroo and verify log + response
+3. Wait for scenario to finish; check **Menu Upload Status**
+4. Optional: confirm `menu.upload_result` in Cloud Run logs after async processing
 
-## Suggested next integration step
+`Upload menu (PUT) endpoint was not called` means **no valid v1 PUT was recorded for that scenario run** — usually wrong timing, wrong credentials, or PUT returned 4xx.
 
-Connect your own system endpoint to `FORWARD_TARGET_URL` so your core platform receives:
-- normalized menu snapshots (`kind: "menu"`)
-- normalized order events (`kind: "order_event"`)
+## Deploy (Cloud Run + GitHub Actions)
+
+See `.github/workflows/deploy-cloud-run.yml`.
+
+After deploy, set the same env vars on the Cloud Run service as in `.env`.
+
+## References
+
+- [Menu API Overview](https://api-docs.deliveroo.com/docs/menu-api-overview)
+- [Upload menu PUT](https://api-docs.deliveroo.com/reference/put_v1-brands-brand-id-menus-id)
+- [Securing Webhooks](https://api-docs.deliveroo.com/docs/securing-webhooks)
+- [Credential Types](https://api-docs.deliveroo.com/reference/credentials)

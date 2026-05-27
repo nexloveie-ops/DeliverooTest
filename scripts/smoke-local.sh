@@ -26,4 +26,11 @@ echo "$RESP" | grep -q '"ok":true' || {
   exit 1
 }
 
+echo "$RESP" | grep -q '"method":"PUT"' || {
+  echo "FAIL: response missing PUT audit metadata"
+  echo "$RESP"
+  exit 1
+}
+
 echo "PASS: local smoke test"
+echo "$RESP"

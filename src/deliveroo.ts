@@ -1,6 +1,6 @@
 import axios from "axios";
 import { config } from "./config.js";
-import type { NormalizedMenuItem } from "./types.js";
+import type { NormalizedMenuItem, UploadMenuResult } from "./types.js";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -186,7 +186,7 @@ type UploadMenuOptions = {
   payload?: unknown;
 };
 
-export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<unknown> => {
+export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<UploadMenuResult> => {
   const token = await getAccessToken();
   const context = await resolveSiteContext(token, {
     siteId: options?.siteId,
@@ -420,8 +420,16 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
     }
   };
 
+  const body = options?.payload ?? defaultPayload;
+  const menuBody = toRecord(body);
+  const menuSection = toRecord(menuBody.menu);
+  const mealtimesCount = Array.isArray(menuSection.mealtimes) ? menuSection.mealtimes.length : 0;
+  const siteIds = Array.isArray(menuBody.site_ids)
+    ? menuBody.site_ids.filter((id): id is string => typeof id === "string")
+    : [siteId];
+
   const url = `${config.deliverooBaseUrl}/menu/v1/brands/${brandId}/menus/${menuId}`;
-  const response = await axios.put(url, options?.payload ?? defaultPayload, {
+  const response = await axios.put(url, body, {
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: "application/json",
@@ -429,7 +437,32 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
     },
     timeout: 20000
   });
-  return response.data;
+
+  const result: UploadMenuResult = {
+    method: "PUT",
+    url,
+    brandId,
+    siteId,
+    menuId,
+    siteIds,
+    mealtimesCount,
+    deliveroo: response.data
+  };
+
+  console.log(
+    JSON.stringify({
+      msg: "deliveroo.menu.upload",
+      method: result.method,
+      url: result.url,
+      brandId: result.brandId,
+      siteId: result.siteId,
+      menuId: result.menuId,
+      siteIds: result.siteIds,
+      mealtimesCount: result.mealtimesCount
+    })
+  );
+
+  return result;
 };
 
 export const fetchDeliverooMenu = async (): Promise<NormalizedMenuItem[]> => {

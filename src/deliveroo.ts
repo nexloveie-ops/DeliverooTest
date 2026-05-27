@@ -561,26 +561,62 @@ export const parseItemUnavailabilityUpdates = (
 type UnavailabilitySiteOptions = {
   siteId?: string;
   siteDrnId?: string;
+  /** Portal Scenario 8 menu id — required for v1 (recommended for scenario validation). */
+  menuId?: string;
+  apiVersion?: "v1" | "v2";
 };
+
+const SCENARIO8_RATE_LIMIT_MS = 900;
 
 const itemUnavailabilitiesV2Url = (brandId: string, siteId: string): string =>
   `${config.deliverooBaseUrl}/menu/v2/brands/${brandId}/sites/${siteId}/menu/item_unavailabilities`;
+
+const itemUnavailabilitiesV1Url = (brandId: string, menuId: string, siteId: string): string =>
+  `${config.deliverooBaseUrl}/menu/v1/brands/${brandId}/menus/${menuId}/item_unavailabilities/${siteId}`;
+
+const resolveUnavailabilityTarget = async (
+  token: string,
+  options?: UnavailabilitySiteOptions
+): Promise<{ siteId: string; brandId: string; menuId?: string; apiVersion: "v1" | "v2"; url: string }> => {
+  const { siteId, brandId } = await resolveSiteContext(token, options);
+  const menuId = options?.menuId?.trim();
+  const apiVersion = options?.apiVersion ?? (menuId ? "v1" : "v2");
+  if (apiVersion === "v1") {
+    if (!menuId) {
+      throw new Error("menuId is required for v1 item unavailabilities (use Portal Scenario 8 menu_id)");
+    }
+    return {
+      siteId,
+      brandId,
+      menuId,
+      apiVersion: "v1",
+      url: itemUnavailabilitiesV1Url(brandId, menuId, siteId)
+    };
+  }
+  return {
+    siteId,
+    brandId,
+    apiVersion: "v2",
+    url: itemUnavailabilitiesV2Url(brandId, siteId)
+  };
+};
 
 export const getItemUnavailabilities = async (
   options?: UnavailabilitySiteOptions
 ): Promise<ItemUnavailabilitiesResult> => {
   const token = await getAccessToken();
-  const { siteId, brandId } = await resolveSiteContext(token, options);
-  const url = itemUnavailabilitiesV2Url(brandId, siteId);
-  const response = await axios.get(url, {
+  const target = await resolveUnavailabilityTarget(token, options);
+  const response = await axios.get(target.url, {
     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
     timeout: 15000
   });
   return {
     method: "GET",
-    url,
-    brandId,
-    siteId,
+    url: target.url,
+    brandId: target.brandId,
+    siteId: target.siteId,
+    menuId: target.menuId,
+    apiVersion: target.apiVersion,
     deliveroo: response.data
   };
 };
@@ -593,10 +629,9 @@ export const updateItemUnavailabilities = async (
     throw new Error("item_unavailabilities must contain at least one item");
   }
   const token = await getAccessToken();
-  const { siteId, brandId } = await resolveSiteContext(token, options);
-  const url = itemUnavailabilitiesV2Url(brandId, siteId);
+  const target = await resolveUnavailabilityTarget(token, options);
   const response = await axios.post(
-    url,
+    target.url,
     { item_unavailabilities: itemUnavailabilities },
     {
       headers: {
@@ -612,18 +647,22 @@ export const updateItemUnavailabilities = async (
     JSON.stringify({
       msg: "deliveroo.menu.item_unavailabilities",
       method: "POST",
-      url,
-      brandId,
-      siteId,
+      url: target.url,
+      apiVersion: target.apiVersion,
+      brandId: target.brandId,
+      siteId: target.siteId,
+      menuId: target.menuId,
       itemIds: itemUnavailabilities.map((item) => item.item_id)
     })
   );
 
   return {
     method: "POST",
-    url,
-    brandId,
-    siteId,
+    url: target.url,
+    brandId: target.brandId,
+    siteId: target.siteId,
+    menuId: target.menuId,
+    apiVersion: target.apiVersion,
     itemCount: itemUnavailabilities.length,
     deliveroo: response.data
   };
@@ -633,7 +672,17 @@ export const runScenario8Unavailabilities = async (
   options?: UnavailabilitySiteOptions & { step?: "1" | "2" | "both" }
 ): Promise<{ step1?: Scenario8StepResult; step2?: Scenario8StepResult }> => {
   const step = options?.step ?? "both";
-  const siteOpts = { siteId: options?.siteId, siteDrnId: options?.siteDrnId };
+  if (!options?.menuId?.trim()) {
+    throw new Error(
+      "menuId is required for Scenario 8 (same menu_id as Portal; uses v1 POST .../menus/{menuId}/item_unavailabilities/{siteId})"
+    );
+  }
+  const siteOpts: UnavailabilitySiteOptions = {
+    siteId: options.siteId,
+    siteDrnId: options.siteDrnId,
+    menuId: options.menuId,
+    apiVersion: "v1"
+  };
   const out: { step1?: Scenario8StepResult; step2?: Scenario8StepResult } = {};
 
   if (step === "1" || step === "both") {
@@ -642,7 +691,7 @@ export const runScenario8Unavailabilities = async (
   }
 
   if (step === "both") {
-    await sleep(150);
+    await sleep(SCENARIO8_RATE_LIMIT_MS);
   }
 
   if (step === "2" || step === "both") {

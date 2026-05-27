@@ -59,25 +59,27 @@ Response includes audit block `put`: `{ method, url, brandId, siteId, menuId, si
 
 Complete **Scenario 3** on the same `menu_id` first so GET returns a menu. `matchExistingMenu` on the second PUT should be `true`.
 
-**Scenario 8:** Portal **Start** auto-creates a menu with `orange_juice`, `granola`, `whole_milk`. No menu upload needed.
+**Scenario 8:** Portal **Start** auto-creates a menu for the **menu_id you enter** with `orange_juice`, `granola`, `whole_milk`. Uses **v1** `POST .../menus/{menu_id}/item_unavailabilities/{site_id}` (Portal usually validates this path, not v2-only).
 
 1. **Step 1** — mark `orange_juice` and `granola` unavailable  
-2. **Step 2** — mark `orange_juice` available and `whole_milk` unavailable  
+2. **Step 2** — mark `orange_juice` available and `whole_milk` unavailable (wait **≥1s** after step 1 — rate limit ~1 req / 833ms)
 
-Final state: `orange_juice` available, `granola` unavailable, `whole_milk` unavailable.
+`menuId` in curl **must match** Portal Scenario 8 `menu_id`.
 
 ```bash
-# After Portal Start (within scenario window):
+# After Portal Start (within ~30s):
 curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario8?step=1" \
   -H "Content-Type: application/json" \
-  -d '{"site_drn_id":"607326a3-ef2d-4b8b-b013-a91c52c3954f"}'
+  -d '{"menuId":"<portal-menu-id>","site_drn_id":"607326a3-ef2d-4b8b-b013-a91c52c3954f"}'
+
+sleep 1
 
 curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario8?step=2" \
   -H "Content-Type: application/json" \
-  -d '{"site_drn_id":"607326a3-ef2d-4b8b-b013-a91c52c3954f"}'
+  -d '{"menuId":"<portal-menu-id>","site_drn_id":"607326a3-ef2d-4b8b-b013-a91c52c3954f"}'
 ```
 
-Or both steps in one call: `POST /deliveroo/menu/scenario8` (omit `step` or `step=both`).
+If stuck on **validating** with no error: confirm both POSTs used the same `menuId` as Portal, happened after **Start**, and check API Suite request logs in the Portal.
 
 **Scenario 6:** Portal `menu_id` can stay **`123156468`**. Flow: **Start** → within **30s** upload with `scenario=webhook` → wait **1–5 min** for Deliveroo `POST` to `/webhooks/deliveroo` (must return **200**).
 

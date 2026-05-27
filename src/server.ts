@@ -67,11 +67,14 @@ const deliverooAxiosDetail = (error: unknown): unknown => {
 const readUnavailabilitySiteParams = (
   query: express.Request["query"],
   body?: Record<string, unknown>
-): { siteId?: string; siteDrnId?: string } => {
+): { siteId?: string; siteDrnId?: string; menuId?: string; apiVersion?: "v1" | "v2" } => {
   const q = (key: string): string | undefined => {
     const value = query[key];
     return typeof value === "string" && value.length > 0 ? value : undefined;
   };
+  const apiRaw = q("apiVersion") ?? q("api_version");
+  const apiVersion =
+    apiRaw === "v1" || apiRaw === "v2" ? apiRaw : undefined;
   return {
     siteId:
       q("siteId") ??
@@ -82,7 +85,13 @@ const readUnavailabilitySiteParams = (
       q("siteDrnId") ??
       q("site_drn_id") ??
       (typeof body?.siteDrnId === "string" ? body.siteDrnId : undefined) ??
-      (typeof body?.site_drn_id === "string" ? body.site_drn_id : undefined)
+      (typeof body?.site_drn_id === "string" ? body.site_drn_id : undefined),
+    menuId:
+      q("menuId") ??
+      q("menu_id") ??
+      (typeof body?.menuId === "string" ? body.menuId : undefined) ??
+      (typeof body?.menu_id === "string" ? body.menu_id : undefined),
+    apiVersion
   };
 };
 
@@ -378,10 +387,10 @@ app.post("/deliveroo/menu/scenario8", async (req, res) => {
       ...result,
       hint:
         step === "both"
-          ? "Scenario 8: Portal Start creates orange_juice, granola, whole_milk. This ran step 1 then step 2. For Portal timing, call step=1 then step=2 separately after Start."
+          ? "Scenario 8: v1 POST with Portal menu_id. Step 1+2 ran with 900ms gap. Re-Start if Portal still validating."
           : step === "1"
-            ? "Scenario 8 step 1 done. Next: POST with step=2 (orange_juice available, whole_milk unavailable)."
-            : "Scenario 8 step 2 done. Final: orange_juice available, granola unavailable, whole_milk unavailable."
+            ? "Scenario 8 step 1 done (v1). Wait ≥1s, then step=2 with same menuId."
+            : "Scenario 8 step 2 done (v1). Final: orange_juice available, granola unavailable, whole_milk unavailable."
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";

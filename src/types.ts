@@ -53,6 +53,8 @@ export type ItemUnavailabilitiesResult = {
   url: string;
   brandId: string;
   siteId: string;
+  menuId?: string;
+  apiVersion: "v1" | "v2";
   itemCount?: number;
   deliveroo: unknown;
 };

@@ -55,7 +55,14 @@ Response includes audit block `put`: `{ method, url, brandId, siteId, menuId, si
 
 Complete **Scenario 3** on the same `menu_id` first so GET returns a menu. `matchExistingMenu` on the second PUT should be `true`.
 
-**Scenario 6:** Portal `menu_id` can stay **`123156468`** — `scenario=webhook` bumps prices/descriptions each upload so you avoid `MATCH_EXISTING_MENU`. Smoke without `MENU_ID` still auto-generates `test-webhook-<timestamp>`.
+**Scenario 6:** Portal `menu_id` can stay **`123156468`**. Flow: **Start** → within **30s** upload with `scenario=webhook` → wait **1–5 min** for Deliveroo `POST` to `/webhooks/deliveroo` (must return **200**).
+
+Troubleshooting:
+
+- `GET /deliveroo/menu/webhook-inbound` — recent Deliveroo `POST` attempts on this instance (status, HMAC, errors)
+- Cloud Run logs: search `deliveroo.webhook.inbound` (not browser `GET` to the webhook URL)
+- If `invalid menu webhook signature`: clear **`DELIVEROO_WEBHOOK_SECRET`** on Cloud Run or set it to the exact Portal webhook secret
+- `webhook-status` is in-memory; use logs if multi-instance or after cold start
 
 ### Webhooks (`/webhooks/deliveroo`)
 

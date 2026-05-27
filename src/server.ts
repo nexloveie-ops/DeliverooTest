@@ -4,7 +4,13 @@ import { config } from "./config.js";
 import { fetchDeliverooMenu, uploadDeliverooMenu } from "./deliveroo.js";
 import { forwardToOwnSystem } from "./forwarder.js";
 import type { NormalizedMenuEvent, NormalizedOrderEvent } from "./types.js";
-import { getMenuWebhookStatus, recordMenuWebhook } from "./menuWebhookStore.js";
+import {
+  appendWebhookInbound,
+  getMenuWebhookStatus,
+  getRecentWebhookInbound,
+  recordMenuWebhook,
+  type WebhookInboundLog
+} from "./menuWebhookStore.js";
 import {
   getHeaderValue,
   isMenuWebhookRequest,
@@ -193,7 +199,17 @@ app.get("/deliveroo/menu/webhook-status", (req, res) => {
     return;
   }
   const status = getMenuWebhookStatus(menuId);
-  res.json({ ok: true, menuId, ...status });
+  const includeAll = req.query.all === "true";
+  res.json({
+    ok: true,
+    menuId,
+    ...status,
+    recentInbound: includeAll ? getRecentWebhookInbound() : getRecentWebhookInbound().slice(0, 10)
+  });
+});
+
+app.get("/deliveroo/menu/webhook-inbound", (_req, res) => {
+  res.json({ ok: true, count: getRecentWebhookInbound().length, recent: getRecentWebhookInbound() });
 });
 
 app.get("/deliveroo/menu/upload", async (req, res) => {
@@ -221,28 +237,79 @@ app.head("/webhooks/deliveroo", (_req, res) => {
 });
 
 app.post("/webhooks/deliveroo", async (req, res) => {
+  const inboundBase = (): Omit<WebhookInboundLog, "at" | "responseStatus"> => ({
+    method: req.method,
+    path: req.path,
+    payloadType: getHeaderValue(req.headers["x-deliveroo-payload-type"]),
+    hmacPresent: Boolean(getHeaderValue(req.headers["x-deliveroo-hmac-sha256"])),
+    sequenceGuidPresent: Boolean(getHeaderValue(req.headers["x-deliveroo-sequence-guid"])),
+    hmacVerified: false,
+    secretConfigured: Boolean(config.deliverooWebhookSecret)
+  });
+
+  const finishInbound = (entry: WebhookInboundLog): void => {
+    appendWebhookInbound(entry);
+    console.log(JSON.stringify({ msg: "deliveroo.webhook.inbound", ...entry }));
+  };
+
   try {
     const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from("");
     const headers = req.headers;
     const sequenceGuid = getHeaderValue(headers["x-deliveroo-sequence-guid"]);
     const hmacSha256 = getHeaderValue(headers["x-deliveroo-hmac-sha256"]);
 
-    const parsed = JSON.parse(rawBody.toString("utf-8")) as Record<string, unknown>;
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(rawBody.toString("utf-8")) as Record<string, unknown>;
+    } catch {
+      finishInbound({
+        ...inboundBase(),
+        at: new Date().toISOString(),
+        responseStatus: 400,
+        error: "invalid json body"
+      });
+      res.status(400).json({ ok: false, error: "invalid json body" });
+      return;
+    }
 
     if (isMenuUploadResultEvent(parsed, headers)) {
       const webhookVersion = getHeaderValue(headers["x-deliveroo-webhook-version"]);
       if (webhookVersion && webhookVersion !== "1") {
+        finishInbound({
+          ...inboundBase(),
+          at: new Date().toISOString(),
+          responseStatus: 400,
+          event: String(parsed.event ?? ""),
+          error: "unsupported webhook version"
+        });
         res.status(400).json({ ok: false, error: "unsupported webhook version" });
         return;
       }
 
-      if (!verifyDeliverooWebhookHmac(rawBody, sequenceGuid, hmacSha256, false)) {
+      const hmacOk = verifyDeliverooWebhookHmac(rawBody, sequenceGuid, hmacSha256, false);
+      if (!hmacOk) {
+        finishInbound({
+          ...inboundBase(),
+          at: new Date().toISOString(),
+          responseStatus: 401,
+          event: String(parsed.event ?? ""),
+          hmacVerified: false,
+          error: "invalid menu webhook signature"
+        });
         res.status(401).json({ ok: false, error: "invalid menu webhook signature" });
         return;
       }
 
       const idempotencyKey = sequenceGuid || crypto.randomUUID();
       if (!rememberOnce(`menu:${idempotencyKey}`)) {
+        finishInbound({
+          ...inboundBase(),
+          at: new Date().toISOString(),
+          responseStatus: 200,
+          event: String(parsed.event ?? ""),
+          hmacVerified: true,
+          duplicate: true
+        });
         res.status(200).json({ ok: true, duplicate: true, kind: "menu_event" });
         return;
       }
@@ -277,6 +344,16 @@ app.post("/webhooks/deliveroo", async (req, res) => {
 
       recordMenuWebhook(normalized);
 
+      finishInbound({
+        ...inboundBase(),
+        at: normalized.occurredAt,
+        responseStatus: 200,
+        event: normalized.eventType,
+        menuId: normalized.menuId,
+        menuHttpStatus: normalized.httpStatus,
+        hmacVerified: true
+      });
+
       await forwardToOwnSystem(normalized, "menu_event");
       res.status(200).json({
         ok: true,
@@ -289,7 +366,15 @@ app.post("/webhooks/deliveroo", async (req, res) => {
 
     // Order / rider events (and legacy POS order webhooks)
     const legacyPos = isLegacyPosOrderWebhook(parsed);
-    if (!verifyDeliverooWebhookHmac(rawBody, sequenceGuid, hmacSha256, legacyPos)) {
+    const orderHmacOk = verifyDeliverooWebhookHmac(rawBody, sequenceGuid, hmacSha256, legacyPos);
+    if (!orderHmacOk) {
+      finishInbound({
+        ...inboundBase(),
+        at: new Date().toISOString(),
+        responseStatus: 401,
+        event: String(parsed.event_type ?? parsed.type ?? ""),
+        error: "invalid webhook signature"
+      });
       res.status(401).json({ ok: false, error: "invalid webhook signature" });
       return;
     }
@@ -314,10 +399,24 @@ app.post("/webhooks/deliveroo", async (req, res) => {
       payload: parsed
     };
 
+    finishInbound({
+      ...inboundBase(),
+      at: new Date().toISOString(),
+      responseStatus: 200,
+      event: eventType,
+      hmacVerified: orderHmacOk
+    });
+
     await forwardToOwnSystem(normalized, "order_event");
     res.status(200).json({ ok: true, kind: "order_event", eventId, orderId, eventType });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
+    finishInbound({
+      ...inboundBase(),
+      at: new Date().toISOString(),
+      responseStatus: 500,
+      error: message
+    });
     res.status(500).json({ ok: false, error: message });
   }
 });

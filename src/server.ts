@@ -10,6 +10,7 @@ import {
   runScenario8Unavailabilities,
   runScenario9Unavailabilities,
   runScenario10Unavailabilities,
+  runScenario11Unavailabilities,
   updateItemUnavailabilities,
   uploadDeliverooMenu
 } from "./deliveroo.js";
@@ -120,6 +121,17 @@ const parseScenarioGetPutStep = (
     (typeof body?.step === "string" ? body.step : undefined);
   if (raw === "get" || raw === "put") return raw;
   return "both";
+};
+
+const parseScenario11Step = (
+  query: express.Request["query"],
+  body?: Record<string, unknown>
+): "post" | "get" | "both" => {
+  const raw =
+    (typeof query.step === "string" ? query.step : undefined) ??
+    (typeof body?.step === "string" ? body.step : undefined);
+  if (raw === "post" || raw === "get") return raw;
+  return "post";
 };
 
 const readReplaceAllBody = (body: Record<string, unknown>): ReturnType<typeof parseReplaceAllUnavailabilities> | undefined => {
@@ -521,6 +533,48 @@ app.post("/deliveroo/menu/scenario10", async (req, res) => {
           : step === "put"
             ? "Scenario 10 PUT: empty unavailable_ids + hidden_ids — all items available."
             : "Scenario 10: GET then PUT reset after Portal Start."
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    res.status(500).json({ ok: false, error: message, detail: deliverooAxiosDetail(error) });
+  }
+});
+
+app.post("/deliveroo/menu/scenario11", async (req, res) => {
+  const body = req.body as Record<string, unknown>;
+  const siteParams = readUnavailabilitySiteParams(req.query, body);
+  const step = parseScenario11Step(req.query, body);
+  if (!siteParams.menuId) {
+    res.status(400).json({
+      ok: false,
+      error: "menuId is required for Scenario 11 (same menu_id as Portal)"
+    });
+    return;
+  }
+  try {
+    const result = await runScenario11Unavailabilities({ ...siteParams, step });
+    res.json({
+      ok: true,
+      step,
+      menuId: siteParams.menuId,
+      initialPost: [
+        { item_id: "granola", status: "unavailable" },
+        { item_id: "orange_juice", status: "hidden" }
+      ],
+      expectedAfterMorningReset: {
+        orange_juice: "hidden (unchanged)",
+        granola: "available (was unavailable, reset)",
+        whole_milk: "available"
+      },
+      getWarnings: result.getWarnings,
+      diagnose: result.diagnose,
+      ...result,
+      hint:
+        step === "post"
+          ? "Scenario 11: POST initial stock after Start (before midnight sim). Portal then runs morning reset when site opens."
+          : step === "get"
+            ? "Scenario 11 GET: verify granola available, orange_juice still hidden after morning reset."
+            : "Scenario 11: POST initial state then GET (optional check)."
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";

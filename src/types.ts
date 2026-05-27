@@ -102,6 +102,15 @@ export type Scenario10PutResult = ItemUnavailabilitiesResult & {
   getAttempts?: number;
 };
 
+export type Scenario11PostResult = ItemUnavailabilitiesResult & {
+  itemUnavailabilities: ItemUnavailabilityUpdate[];
+};
+
+export type Scenario11GetResult = ItemUnavailabilitiesResult & {
+  parsed: ReplaceAllUnavailabilitiesPayload;
+  expectedAfterMorningReset: ReplaceAllUnavailabilitiesPayload;
+};
+
 export type UploadMenuResult = {
   method: "PUT";
   url: string;

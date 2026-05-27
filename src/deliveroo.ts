@@ -23,6 +23,8 @@ import type {
   Scenario9PutResult,
   Scenario10GetResult,
   Scenario10PutResult,
+  Scenario11GetResult,
+  Scenario11PostResult,
   UploadMenuResult
 } from "./types.js";
 
@@ -545,6 +547,18 @@ export const SCENARIO8_STEP2: ItemUnavailabilityUpdate[] = [
   { item_id: "orange_juice", status: "available" },
   { item_id: "whole_milk", status: "unavailable" }
 ];
+
+/** Scenario 11: initial stock before midnight (POST individual unavailabilities). */
+export const SCENARIO11_INITIAL_POST: ItemUnavailabilityUpdate[] = [
+  { item_id: "granola", status: "unavailable" },
+  { item_id: "orange_juice", status: "hidden" }
+];
+
+/** Expected GET state after Portal simulates morning stock reset. */
+export const SCENARIO11_AFTER_MORNING_RESET: ReplaceAllUnavailabilitiesPayload = {
+  unavailable_ids: [],
+  hidden_ids: ["orange_juice"]
+};
 
 const isItemAvailabilityStatus = (value: unknown): value is ItemAvailabilityStatus =>
   value === "available" || value === "unavailable" || value === "hidden";
@@ -1091,6 +1105,77 @@ export const runScenario10Unavailabilities = async (
     };
     out.getAttempts = getAttempts;
     out.tabletFallbackUsed = tabletFallbackUsed;
+  }
+
+  return out;
+};
+
+export const validateScenario11AfterMorningReset = (
+  parsed: ReplaceAllUnavailabilitiesPayload
+): string[] => {
+  const warnings: string[] = [];
+  if (parsed.unavailable_ids.includes("granola")) {
+    warnings.push("After morning reset: granola should not be unavailable.");
+  }
+  if (!parsed.hidden_ids.includes("orange_juice")) {
+    warnings.push("After morning reset: orange_juice should remain hidden.");
+  }
+  if (parsed.unavailable_ids.includes("whole_milk") || parsed.hidden_ids.includes("whole_milk")) {
+    warnings.push("After morning reset: whole_milk should be available.");
+  }
+  return warnings;
+};
+
+export const runScenario11Unavailabilities = async (
+  options?: UnavailabilitySiteOptions & { step?: "post" | "get" | "both" }
+): Promise<{
+  post?: Scenario11PostResult;
+  get?: Scenario11GetResult;
+  getWarnings?: string[];
+  diagnose?: Scenario9Diagnose;
+}> => {
+  const step = options?.step ?? "post";
+  if (!options?.menuId?.trim()) {
+    throw new Error(
+      "menuId is required for Scenario 11 (v1 POST .../menus/{menuId}/item_unavailabilities/{siteId})"
+    );
+  }
+  const siteOpts: UnavailabilitySiteOptions = {
+    siteId: options.siteId,
+    siteDrnId: options.siteDrnId,
+    menuId: options.menuId,
+    apiVersion: "v1"
+  };
+  const out: {
+    post?: Scenario11PostResult;
+    get?: Scenario11GetResult;
+    getWarnings?: string[];
+    diagnose?: Scenario9Diagnose;
+  } = {};
+
+  const diagnose = await diagnoseScenario9Context(siteOpts);
+  out.diagnose = diagnose;
+
+  if (step === "post" || step === "both") {
+    const result = await updateItemUnavailabilities(SCENARIO11_INITIAL_POST, siteOpts);
+    out.post = {
+      ...result,
+      itemUnavailabilities: SCENARIO11_INITIAL_POST
+    };
+  }
+
+  if (step === "get" || step === "both") {
+    if (step === "both") {
+      await sleep(SCENARIO8_RATE_LIMIT_MS);
+    }
+    const getResult = await getItemUnavailabilities(siteOpts);
+    const parsed = parseReplaceAllUnavailabilities(getResult.deliveroo);
+    out.getWarnings = validateScenario11AfterMorningReset(parsed);
+    out.get = {
+      ...getResult,
+      parsed,
+      expectedAfterMorningReset: SCENARIO11_AFTER_MORNING_RESET
+    };
   }
 
   return out;

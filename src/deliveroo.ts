@@ -21,6 +21,8 @@ import type {
   Scenario9Diagnose,
   Scenario9GetResult,
   Scenario9PutResult,
+  Scenario10GetResult,
+  Scenario10PutResult,
   UploadMenuResult
 } from "./types.js";
 
@@ -984,6 +986,106 @@ export const runScenario9Unavailabilities = async (
       ...putResult,
       putBody,
       basedOnGet: resolved.basedOnGet,
+      tabletFallbackUsed,
+      getAttempts
+    };
+    out.getAttempts = getAttempts;
+    out.tabletFallbackUsed = tabletFallbackUsed;
+  }
+
+  return out;
+};
+
+/** Scenario 10: PUT body to reset all items to available. */
+export const SCENARIO10_RESET_PUT: ReplaceAllUnavailabilitiesPayload = {
+  unavailable_ids: [],
+  hidden_ids: []
+};
+
+export const buildScenario10ResetPutPayload = (): ReplaceAllUnavailabilitiesPayload => ({
+  unavailable_ids: [],
+  hidden_ids: []
+});
+
+export const runScenario10Unavailabilities = async (
+  options?: UnavailabilitySiteOptions & { step?: "get" | "put" | "both" }
+): Promise<{
+  get?: Scenario10GetResult;
+  put?: Scenario10PutResult;
+  getWarnings?: string[];
+  diagnose?: Scenario9Diagnose;
+  tabletFallbackUsed?: boolean;
+  getAttempts?: number;
+}> => {
+  const step = options?.step ?? "both";
+  if (!options?.menuId?.trim()) {
+    throw new Error(
+      "menuId is required for Scenario 10 (Portal menu_id; v1 GET optional, PUT reset with empty unavailable_ids)"
+    );
+  }
+  const siteOpts: UnavailabilitySiteOptions = {
+    siteId: options.siteId,
+    siteDrnId: options.siteDrnId,
+    menuId: options.menuId,
+    apiVersion: "v1"
+  };
+  const out: {
+    get?: Scenario10GetResult;
+    put?: Scenario10PutResult;
+    getWarnings?: string[];
+    diagnose?: Scenario9Diagnose;
+    tabletFallbackUsed?: boolean;
+    getAttempts?: number;
+  } = {};
+
+  let parsedFromGet: ReplaceAllUnavailabilitiesPayload | undefined;
+  let getAttempts = 0;
+  let tabletFallbackUsed = false;
+
+  const diagnose = await diagnoseScenario9Context(siteOpts);
+  out.diagnose = diagnose;
+
+  if (step === "get" || step === "both") {
+    const polled = await fetchScenario9GetWithRetry(siteOpts);
+    parsedFromGet = polled.parsed;
+    getAttempts = polled.getAttempts;
+    tabletFallbackUsed = polled.tabletFallbackUsed;
+    out.getWarnings = validateScenario9GetState(parsedFromGet);
+    if (out.getWarnings.length > 0 && hasScenario9MenuItems(diagnose) && step === "get") {
+      out.getWarnings.push(
+        "Sandbox GET empty after retries; PUT reset will still send empty unavailable_ids + hidden_ids."
+      );
+    }
+    out.get = {
+      ...polled.getResult,
+      parsed: parsedFromGet,
+      diagnose,
+      getAttempts,
+      tabletFallbackUsed
+    };
+    out.getAttempts = getAttempts;
+    out.tabletFallbackUsed = tabletFallbackUsed;
+  }
+
+  if (step === "put" || step === "both") {
+    if (step === "both") {
+      await sleep(SCENARIO8_RATE_LIMIT_MS);
+    }
+    let stateBeforeReset: ReplaceAllUnavailabilitiesPayload;
+    if (parsedFromGet && validateScenario9GetState(parsedFromGet).length === 0) {
+      stateBeforeReset = parsedFromGet;
+    } else {
+      const resolved = await resolveScenario9GetBaseForPut(siteOpts, diagnose, parsedFromGet);
+      getAttempts = resolved.getAttempts;
+      tabletFallbackUsed = resolved.tabletFallbackUsed;
+      stateBeforeReset = resolved.basedOnGet;
+    }
+    const putBody = buildScenario10ResetPutPayload();
+    const putResult = await replaceAllItemUnavailabilities(putBody, siteOpts);
+    out.put = {
+      ...putResult,
+      putBody,
+      stateBeforeReset,
       tabletFallbackUsed,
       getAttempts
     };

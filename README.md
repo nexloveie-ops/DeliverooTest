@@ -34,6 +34,7 @@ Use **API Suite** sandbox credentials in Cloud Run — not “Credentials for Sc
 | POST | `/deliveroo/menu/scenario8` | Scenario 8: run step `1`, `2`, or `both` (default `both`) |
 | PUT | `/deliveroo/menu/item-unavailabilities` | Replace all unavailabilities (v1 PUT; requires `menuId`) |
 | POST | `/deliveroo/menu/scenario9` | Scenario 9: GET then PUT replace-all (`step=get`, `put`, or `both`) |
+| POST | `/deliveroo/menu/scenario10` | Scenario 10: GET then PUT reset stock (`step=get`, `put`, or `both`) |
 | POST | `/webhooks/deliveroo` | Order events + `menu.upload_result` |
 
 ### Menu upload (`/deliveroo/menu/upload`)
@@ -97,6 +98,23 @@ curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario9?step=put" \
   -H "Content-Type: application/json" \
   -d '{"menuId":"<portal-menu-id>","site_drn_id":"607326a3-ef2d-4b8b-b013-a91c52c3954f"}'
 ```
+
+**Scenario 10:** Portal **Start** creates menu, sets `orange_juice` unavailable and `granola` hidden. Then **PUT** with **empty** `unavailable_ids` (and `hidden_ids`) to reset all items to **available**. Requires **`menuId`** (v1).
+
+```bash
+# After Portal Start:
+curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario10?step=get" \
+  -H "Content-Type: application/json" \
+  -d '{"menuId":"<portal-menu-id>","site_drn_id":"607326a3-ef2d-4b8b-b013-a91c52c3954f"}'
+
+sleep 1
+
+curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario10?step=put" \
+  -H "Content-Type: application/json" \
+  -d '{"menuId":"<portal-menu-id>","site_drn_id":"607326a3-ef2d-4b8b-b013-a91c52c3954f"}'
+```
+
+PUT body sent: `{"unavailable_ids":[],"hidden_ids":[]}`.
 
 **Scenario 6:** Portal `menu_id` can stay **`123156468`**. Flow: **Start** → within **30s** upload with `scenario=webhook` → wait **1–5 min** for Deliveroo `POST` to `/webhooks/deliveroo` (must return **200**).
 

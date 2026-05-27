@@ -92,6 +92,16 @@ export type Scenario9PutResult = ItemUnavailabilitiesResult & {
   getAttempts?: number;
 };
 
+export type Scenario10GetResult = Scenario9GetResult;
+
+export type Scenario10PutResult = ItemUnavailabilitiesResult & {
+  putBody: ReplaceAllUnavailabilitiesPayload;
+  /** Stock state before reset (from GET or tablet defaults). */
+  stateBeforeReset: ReplaceAllUnavailabilitiesPayload;
+  tabletFallbackUsed?: boolean;
+  getAttempts?: number;
+};
+
 export type UploadMenuResult = {
   method: "PUT";
   url: string;

@@ -69,6 +69,6 @@ export type UploadMenuResult = {
   uploadBodySha256?: string;
   /** False only when PUT body matched stored GET bytes (Portal will reject). */
   payloadDiffersFromStored?: boolean;
-  /** Scenario 6: `minimal` or `mealtimes` payload shape. */
-  webhookPayloadShape?: "minimal" | "mealtimes";
+  /** Scenario 6: `mutate` (GET+revision) or `mealtimes-lite` (new menu). */
+  webhookPayloadShape?: "mutate" | "mealtimes-lite";
 };

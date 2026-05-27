@@ -198,19 +198,48 @@ export const buildMinimalWebhookScenarioPayload = (
 };
 
 /**
- * Scenario 6: minimal compliant menu + revision bump (not MATCH_EXISTING_MENU).
+ * Scenario 6 create path: Scenario-3-style mealtimes (no modifiers) for brand-new menu IDs.
  */
 export const buildWebhookScenarioPayload = (
   menuId: string,
   siteId: string,
   revision: string = String(Date.now())
-): Record<string, unknown> => buildMinimalWebhookScenarioPayload(menuId, siteId, revision);
+): Record<string, unknown> => {
+  const payload = buildMealtimesScenarioPayload(menuId, siteId, revision);
+  const menu = toRecord(payload.menu);
+  const items = Array.isArray(menu.items) ? menu.items : [];
+  const itemOnly = items.filter((raw) => toRecord(raw).type === "ITEM");
+  menu.items = itemOnly;
+  menu.modifiers = [];
+  for (const raw of itemOnly) {
+    const item = toRecord(raw);
+    item.modifier_ids = [];
+  }
+  return payload;
+};
 
 export type WebhookUploadBodyStrategy = "template" | "mutate" | "auto";
 
+const buildMutatedMenuJson = (currentMenuJson: string, revision: string): string | undefined => {
+  try {
+    const current = JSON.parse(currentMenuJson) as Record<string, unknown>;
+    const stripped = stripServerFieldsFromMenu(current) as Record<string, unknown>;
+    const mutated = applyWebhookRevision(stripped, revision);
+    const mutatedJson = JSON.stringify(mutated);
+    const strippedStored = JSON.stringify(stripServerFieldsFromMenu(JSON.parse(currentMenuJson)));
+    if (mutatedJson !== currentMenuJson && mutatedJson !== strippedStored) {
+      return mutatedJson;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+};
+
 /**
- * Scenario 6 PUT body. Default `auto` uses the mealtimes template (revision bump) so the
- * payload always differs from a stored GET menu (bundles, mealtimes, or canonical replay).
+ * Scenario 6 PUT body.
+ * - Existing menu (GET): mutate canonical menu in place (avoids async 500 from full template replace).
+ * - New menu (404): mealtimes-lite template with revision bump.
  */
 export const buildWebhookUploadBody = (
   menuId: string,
@@ -221,44 +250,24 @@ export const buildWebhookUploadBody = (
 ): string => {
   const templateJson = JSON.stringify(buildWebhookScenarioPayload(menuId, siteId, revision));
 
-  if (strategy === "template" || !currentMenuJson) {
+  if (!currentMenuJson) {
     return templateJson;
+  }
+
+  if (strategy === "template") {
+    return templateJson;
+  }
+
+  const mutatedJson = buildMutatedMenuJson(currentMenuJson, revision);
+  if (mutatedJson) {
+    return mutatedJson;
   }
 
   if (strategy === "mutate") {
-    try {
-      const current = JSON.parse(currentMenuJson) as Record<string, unknown>;
-      const stripped = stripServerFieldsFromMenu(current) as Record<string, unknown>;
-      const mutated = applyWebhookRevision(stripped, revision);
-      const mutatedJson = JSON.stringify(mutated);
-      const strippedStored = JSON.stringify(stripServerFieldsFromMenu(JSON.parse(currentMenuJson)));
-      if (mutatedJson !== currentMenuJson && mutatedJson !== strippedStored) {
-        return mutatedJson;
-      }
-    } catch {
-      // fall through
-    }
     return templateJson;
   }
 
-  // auto: template unless byte-identical to stored menu (extremely rare)
-  try {
-    const strippedStored = JSON.stringify(
-      stripServerFieldsFromMenu(JSON.parse(currentMenuJson))
-    );
-    if (templateJson !== currentMenuJson && templateJson !== strippedStored) {
-      return templateJson;
-    }
-    const current = JSON.parse(currentMenuJson) as Record<string, unknown>;
-    const mutatedJson = JSON.stringify(
-      applyWebhookRevision(stripServerFieldsFromMenu(current) as Record<string, unknown>, revision)
-    );
-    if (mutatedJson !== currentMenuJson && mutatedJson !== strippedStored) {
-      return mutatedJson;
-    }
-  } catch {
-    // fall through
-  }
+  // auto: existing menu — template only if mutate could not produce a diff
   return templateJson;
 };
 

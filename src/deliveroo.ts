@@ -400,16 +400,21 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
       }
     }
 
-    bodySource = "template";
+    bodySource = currentMenuJson ? "get" : "template";
     let bodyJson = buildWebhookUploadBody(
       menuId,
       siteId,
       revision,
       currentMenuJson,
-      webhookStrategy
+      currentMenuJson ? (webhookStrategy === "template" ? "template" : "mutate") : webhookStrategy
     );
-    if (bodyJson !== JSON.stringify(buildWebhookScenarioPayload(menuId, siteId, revision))) {
+    if (
+      currentMenuJson &&
+      bodyJson !== JSON.stringify(buildWebhookScenarioPayload(menuId, siteId, revision))
+    ) {
       bodySource = "get";
+    } else if (!currentMenuJson) {
+      bodySource = "template";
     }
 
     let uploadBodySha256 = crypto.createHash("sha256").update(bodyJson).digest("hex");
@@ -421,8 +426,13 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
       const parsed = parseMenuUploadResult(deliveroo);
       if (!parsed.matchExistingMenu) break;
       revision = String(Date.now() + attempt + 1);
-      bodyJson = JSON.stringify(buildWebhookScenarioPayload(menuId, siteId, revision));
-      bodySource = "template";
+      if (currentMenuJson) {
+        bodyJson = buildWebhookUploadBody(menuId, siteId, revision, currentMenuJson, "mutate");
+        bodySource = "get";
+      } else {
+        bodyJson = JSON.stringify(buildWebhookScenarioPayload(menuId, siteId, revision));
+        bodySource = "template";
+      }
       uploadBodySha256 = crypto.createHash("sha256").update(bodyJson).digest("hex");
       payloadDiffersFromStored = true;
     }
@@ -440,7 +450,7 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
       storedMenuSha256,
       uploadBodySha256,
       payloadDiffersFromStored,
-      webhookPayloadShape: "minimal"
+      webhookPayloadShape: currentMenuJson ? "mutate" : "mealtimes-lite"
     };
 
     console.log(

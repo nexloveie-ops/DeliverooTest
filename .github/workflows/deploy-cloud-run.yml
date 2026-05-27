@@ -1,0 +1,49 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+env:
+  SERVICE_NAME: deliveroo-test-connector
+  REGION: europe-west2
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+      uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+        service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker auth
+      run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+
+      - name: Build and push image
+      run: |
+        IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/deliveroo-test/${{ env.SERVICE_NAME }}:${{ github.sha }}"
+        docker build -t "$IMAGE" .
+        docker push "$IMAGE"
+        echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+
+      - name: Deploy Cloud Run
+      run: |
+        gcloud run deploy "${{ env.SERVICE_NAME }}" \
+          --image "$IMAGE" \
+          --region "${{ env.REGION }}" \
+          --project "${{ secrets.GCP_PROJECT_ID }}" \
+          --allow-unauthenticated \
+          --port 8080 \
+          --set-env-vars "NODE_ENV=production"

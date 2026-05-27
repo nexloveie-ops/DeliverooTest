@@ -28,6 +28,7 @@ Use **API Suite** sandbox credentials in Cloud Run — not “Credentials for Sc
 | GET | `/healthz` | Health check |
 | POST | `/deliveroo/menu/sync` | `GET` menu v2 by site, normalize items |
 | GET/POST | `/deliveroo/menu/upload` | `PUT` menu v1 (scenario helper) |
+| GET | `/deliveroo/menu/webhook-status` | Poll received `menu.upload_result` for a `menuId` |
 | POST | `/webhooks/deliveroo` | Order events + `menu.upload_result` |
 
 ### Menu upload (`/deliveroo/menu/upload`)
@@ -39,7 +40,7 @@ Calls official v1 endpoint:
 Query/body parameters:
 
 - `menuId` / `menu_id` — **must match** the ID entered in the Developer Portal scenario
-- `scenario` — `mealtimes` (default), `bundles` (Scenario 4), `nochange` (Scenario 5), or `default`
+- `scenario` — `mealtimes` (default), `bundles` (4), `nochange` (5), `webhook` (6), or `default`
 - `siteId` / `site_id` — optional (defaults to `DELIVEROO_LOCATION_ID`, e.g. `100121`)
 - `siteDrnId` / `site_drn_id` — optional scenario parameter; resolved to `site_id` when possible
 
@@ -50,8 +51,11 @@ Response includes audit block `put`: `{ method, url, brandId, siteId, menuId, si
 | `mealtimes` | Menu upload with mealtimes | 2 mealtimes, 7×24h schedules |
 | `bundles` | Menu upload with bundles | 2× `BUNDLE`, `bundle-item` modifiers, price overrides, `party_size` — per [Menu API Guidelines](https://api-docs.deliveroo.com/docs/menu-api-guidelines) |
 | `nochange` | Update menu with no changes (Scenario 5) | **GET menu → PUT the same canonical JSON twice** (`double: true`). Template JSON ≠ stored menu and fails Portal comparison — [Menu API Overview](https://api-docs.deliveroo.com/docs/menu-api-overview) |
+| `webhook` | Menu upload + `menu.upload_result` webhook (Scenario 6) | **New or revised menu** (revision bump on prices/descriptions). Avoid `MATCH_EXISTING_MENU`. Configure Menu Events webhook → `/webhooks/deliveroo`, then poll `GET /deliveroo/menu/webhook-status?menuId=...` |
 
 Complete **Scenario 3** on the same `menu_id` first so GET returns a menu. `matchExistingMenu` on the second PUT should be `true`.
+
+**Scenario 6:** Portal `menu_id` can stay **`123156468`** — `scenario=webhook` bumps prices/descriptions each upload so you avoid `MATCH_EXISTING_MENU`. Smoke without `MENU_ID` still auto-generates `test-webhook-<timestamp>`.
 
 ### Webhooks (`/webhooks/deliveroo`)
 
@@ -110,6 +114,9 @@ MENU_ID=your-bundle-menu-id SCENARIO=bundles npm run smoke:local
 
 # Scenario 5 (no change — seeds mealtimes then re-uploads):
 MENU_ID=123156468 SCENARIO=nochange npm run smoke:local
+
+# Scenario 6 (webhook — same menu_id as other scenarios):
+MENU_ID=123156468 SCENARIO=webhook SITE_DRN_ID=607326a3-ef2d-4b8b-b013-a91c52c3954f npm run smoke:local
 ```
 
 Must see `PASS` and a `put.url` pointing at `api-sandbox.../menu/v1/brands/.../menus/...`.
@@ -131,6 +138,15 @@ curl -X POST "https://<cloud-run-url>/deliveroo/menu/upload" \
 ```
 
 If Scenario 5 failed with “second payload differs”: the connector was sending builder JSON while Deliveroo compares **canonical GET menu** bodies. Run Scenario 3 (`mealtimes`) on that `menu_id`, then Scenario 5 with **one** `double:true` call after Start.
+
+```bash
+# Scenario 6 (menu_id 123156468 in Portal):
+curl -X POST "https://<cloud-run-url>/deliveroo/menu/upload" \
+  -H "Content-Type: application/json" \
+  -d '{"menuId":"123156468","scenario":"webhook","site_drn_id":"607326a3-ef2d-4b8b-b013-a91c52c3954f"}'
+
+curl "https://<cloud-run-url>/deliveroo/menu/webhook-status?menuId=123156468"
+```
 
 Or browser:
 

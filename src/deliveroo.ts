@@ -3,6 +3,7 @@ import axios from "axios";
 import { config } from "./config.js";
 import {
   buildMenuPayload,
+  buildWebhookScenarioPayload,
   countBundlesInPayload,
   serializeNoChangeMenuBody,
   type MenuScenario
@@ -206,6 +207,8 @@ type UploadMenuOptions = {
   doubleUpload?: boolean;
   /** Milliseconds to wait between first and second PUT (default 10000). */
   delayMs?: number;
+  /** Scenario 6: allocate a fresh menu id when the portal omits menuId. */
+  generateMenuId?: boolean;
 };
 
 const sleep = (ms: number): Promise<void> =>
@@ -311,9 +314,13 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
   });
   const siteId = options?.siteId ?? context.siteId ?? config.deliverooLocationId;
   const brandId = context.brandId;
-  const menuId = options?.menuId ?? resolveMenuId(siteId);
   const scenario: MenuScenario = options?.scenario ?? "mealtimes";
+  let menuId = options?.menuId ?? resolveMenuId(siteId);
+  if ((scenario === "webhook" || options?.generateMenuId) && !options?.menuId) {
+    menuId = `menu-${Date.now()}`;
+  }
   const url = `${config.deliverooBaseUrl}/menu/v1/brands/${brandId}/menus/${menuId}`;
+  const menuRevision = scenario === "webhook" ? String(Date.now()) : undefined;
 
   if (scenario === "nochange" && options?.doubleUpload) {
     const delayMs = options.delayMs ?? 10_000;
@@ -374,9 +381,14 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
     bodySource = resolved.source;
     menuBody = JSON.parse(resolved.bodyJson) as Record<string, unknown>;
     deliveroo = await putMenuJson(url, token, resolved.bodyJson);
+  } else if (scenario === "webhook" && !options?.payload) {
+    const revision = menuRevision ?? String(Date.now());
+    const bodyJson = JSON.stringify(buildWebhookScenarioPayload(menuId, siteId, revision));
+    menuBody = JSON.parse(bodyJson) as Record<string, unknown>;
+    deliveroo = await putMenuJson(url, token, bodyJson);
   } else {
     const body =
-      options?.payload ?? buildMenuPayload(menuId, siteId, scenario);
+      options?.payload ?? buildMenuPayload(menuId, siteId, scenario, menuRevision);
     menuBody = toRecord(body);
     deliveroo = (
       await axios.put(url, body, {
@@ -397,7 +409,8 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
     matchExistingMenu: uploadResult.matchExistingMenu,
     result: uploadResult.result,
     deliveroo,
-    bodySource
+    bodySource,
+    menuRevision
   };
 
   console.log(

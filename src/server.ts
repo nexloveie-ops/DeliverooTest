@@ -4,6 +4,7 @@ import { config } from "./config.js";
 import { fetchDeliverooMenu, uploadDeliverooMenu } from "./deliveroo.js";
 import { forwardToOwnSystem } from "./forwarder.js";
 import type { NormalizedMenuEvent, NormalizedOrderEvent } from "./types.js";
+import { getMenuWebhookStatus, recordMenuWebhook } from "./menuWebhookStore.js";
 import {
   getHeaderValue,
   isMenuWebhookRequest,
@@ -68,12 +69,13 @@ app.post("/deliveroo/menu/sync", async (_req, res) => {
 
 const parseScenario = (
   value: string | undefined
-): "default" | "mealtimes" | "bundles" | "nochange" => {
+): "default" | "mealtimes" | "bundles" | "nochange" | "webhook" => {
   if (
     value === "bundles" ||
     value === "mealtimes" ||
     value === "default" ||
-    value === "nochange"
+    value === "nochange" ||
+    value === "webhook"
   ) {
     return value;
   }
@@ -90,10 +92,11 @@ const handleMenuUpload = async (
     menuId?: string;
     siteId?: string;
     siteDrnId?: string;
-    scenario?: "default" | "mealtimes" | "bundles" | "nochange";
+    scenario?: "default" | "mealtimes" | "bundles" | "nochange" | "webhook";
     payload?: unknown;
     doubleUpload?: boolean;
     delayMs?: number;
+    generateMenuId?: boolean;
   },
   res: express.Response
 ): Promise<void> => {
@@ -104,11 +107,13 @@ const handleMenuUpload = async (
       matchExistingMenu: put.matchExistingMenu,
       put,
       hint:
-        put.scenario === "nochange"
-          ? put.doubleUpload
-            ? "Scenario 5: two identical PUTs using GET menu JSON (Deliveroo canonical form). Call only ONCE per Start with double:true."
-            : "Scenario 5: use scenario=nochange (same JSON as mealtimes). Prefer double:true once per Start."
-          : "Per Deliveroo docs: trigger scenario Start first, then call this within ~30s using API Suite sandbox credentials. PUT must match menu_id in the portal."
+        put.scenario === "webhook"
+          ? "Scenario 6: use a NEW menu_id in the Portal (or generateMenuId). Webhook URL must point to /webhooks/deliveroo. Avoid MATCH_EXISTING_MENU — then poll GET /deliveroo/menu/webhook-status?menuId=..."
+          : put.scenario === "nochange"
+            ? put.doubleUpload
+              ? "Scenario 5: two identical PUTs using GET menu JSON (Deliveroo canonical form). Call only ONCE per Start with double:true."
+              : "Scenario 5: use scenario=nochange (same JSON as mealtimes). Prefer double:true once per Start."
+            : "Per Deliveroo docs: trigger scenario Start first, then call this within ~30s using API Suite sandbox credentials. PUT must match menu_id in the portal."
     });
   } catch (error) {
     const axiosDetail =
@@ -130,10 +135,11 @@ const readUploadParams = (
   menuId?: string;
   siteId?: string;
   siteDrnId?: string;
-  scenario?: "default" | "mealtimes" | "bundles" | "nochange";
+  scenario?: "default" | "mealtimes" | "bundles" | "nochange" | "webhook";
   payload?: unknown;
   doubleUpload?: boolean;
   delayMs?: number;
+  generateMenuId?: boolean;
 } => {
   const q = (key: string): string | undefined => {
     const value = query[key];
@@ -168,9 +174,27 @@ const readUploadParams = (
     q("delayMs") ??
     (typeof body?.delayMs === "number" ? String(body.delayMs) : undefined);
   const delayMs = delayRaw ? Number(delayRaw) : undefined;
+  const generateMenuId =
+    q("generateMenuId") === "true" ||
+    body?.generateMenuId === true;
 
-  return { menuId, siteId, siteDrnId, scenario, payload, doubleUpload, delayMs };
+  return { menuId, siteId, siteDrnId, scenario, payload, doubleUpload, delayMs, generateMenuId };
 };
+
+app.get("/deliveroo/menu/webhook-status", (req, res) => {
+  const menuId =
+    typeof req.query.menuId === "string"
+      ? req.query.menuId
+      : typeof req.query.menu_id === "string"
+        ? req.query.menu_id
+        : undefined;
+  if (!menuId) {
+    res.status(400).json({ ok: false, error: "menuId query parameter is required" });
+    return;
+  }
+  const status = getMenuWebhookStatus(menuId);
+  res.json({ ok: true, menuId, ...status });
+});
 
 app.get("/deliveroo/menu/upload", async (req, res) => {
   await handleMenuUpload(readUploadParams(req.query), res);
@@ -235,6 +259,8 @@ app.post("/webhooks/deliveroo", async (req, res) => {
           httpStatus: normalized.httpStatus
         })
       );
+
+      recordMenuWebhook(normalized);
 
       await forwardToOwnSystem(normalized, "menu_event");
       res.status(200).json({

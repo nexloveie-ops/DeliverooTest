@@ -30,15 +30,22 @@ const bundleItemOverride = (bundleId: string, price: number): Record<string, unk
   type: "ITEM"
 });
 
-export type MenuScenario = "default" | "mealtimes" | "bundles" | "nochange";
+export type MenuScenario = "default" | "mealtimes" | "bundles" | "nochange" | "webhook";
+
+const revisionPriceBump = (revision: string): number =>
+  (parseInt(revision.slice(-6), 36) % 150) + 1;
 
 export const buildMenuPayload = (
   menuId: string,
   siteId: string,
-  scenario: MenuScenario = "default"
+  scenario: MenuScenario = "default",
+  revision?: string
 ): Record<string, unknown> => {
   if (scenario === "bundles") {
     return buildBundlesScenarioPayload(menuId, siteId);
+  }
+  if (scenario === "webhook") {
+    return buildWebhookScenarioPayload(menuId, siteId, revision);
   }
   if (scenario === "nochange") {
     return buildMealtimesScenarioPayload(menuId, siteId);
@@ -48,6 +55,16 @@ export const buildMenuPayload = (
   }
   return buildMealtimesScenarioPayload(menuId, siteId);
 };
+
+/**
+ * Scenario 6: mealtimes-shaped menu with a unique revision so PUT triggers async processing
+ * (not MATCH_EXISTING_MENU). Use a new menu_id in the Portal or rely on revision bump.
+ */
+export const buildWebhookScenarioPayload = (
+  menuId: string,
+  siteId: string,
+  revision: string = String(Date.now())
+): Record<string, unknown> => buildMealtimesScenarioPayload(menuId, siteId, revision);
 
 /**
  * Scenario 5: must re-upload the same JSON as Scenario 3 (mealtimes), byte-for-byte.
@@ -70,8 +87,14 @@ export const serializeScenario5MenuBody = serializeNoChangeMenuBody;
 /** Scenario 3: multiple mealtimes, 7d/24h non-overlapping schedules */
 export const buildMealtimesScenarioPayload = (
   menuId: string,
-  siteId: string
-): Record<string, unknown> => ({
+  siteId: string,
+  revision?: string
+): Record<string, unknown> => {
+  const rev = revision ?? "";
+  const bump = rev ? revisionPriceBump(rev) : 0;
+  const revLabel = rev ? rev.slice(0, 8) : "base";
+
+  return {
   name: menuId,
   site_ids: [siteId],
   menu: {
@@ -85,20 +108,20 @@ export const buildMealtimesScenarioPayload = (
         id: "item-burger",
         type: "ITEM",
         name: { en: "Test Burger" },
-        description: { en: "Sandbox test item" },
+        description: { en: `Sandbox test item (rev ${revLabel})` },
         operational_name: "test-burger",
         plu: "TB001",
-        price_info: { price: 1000, overrides: [] },
+        price_info: { price: 1000 + bump, overrides: [] },
         modifier_ids: ["mod-spice", "mod-extra"]
       }),
       itemBase({
         id: "item-wrap",
         type: "ITEM",
         name: { en: "Test Wrap" },
-        description: { en: "Second menu item" },
+        description: { en: `Second menu item (rev ${revLabel})` },
         operational_name: "test-wrap",
         plu: "TW001",
-        price_info: { price: 900, overrides: [] },
+        price_info: { price: 900 + bump, overrides: [] },
         modifier_ids: ["mod-extra"],
         diets: ["vegan"]
       }),
@@ -176,7 +199,7 @@ export const buildMealtimesScenarioPayload = (
       {
         id: "daytime-menu",
         name: { en: "Daytime Menu" },
-        description: { en: "Daytime menu." },
+        description: { en: rev ? `Daytime menu (rev ${revLabel}).` : "Daytime menu." },
         category_ids: ["cat-breakfast", "cat-main", "cat-special"],
         image: { url: "https://images.unsplash.com/photo-1533089860892-a7c6f0a986b6" },
         schedule: [0, 1, 2, 3, 4, 5, 6].map((day) => ({
@@ -187,7 +210,7 @@ export const buildMealtimesScenarioPayload = (
       {
         id: "evening-menu",
         name: { en: "Evening Menu" },
-        description: { en: "Evening menu." },
+        description: { en: rev ? `Evening menu (rev ${revLabel}).` : "Evening menu." },
         category_ids: ["cat-main", "cat-special"],
         image: { url: "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38" },
         schedule: [0, 1, 2, 3, 4, 5, 6].map((day) => ({
@@ -197,7 +220,8 @@ export const buildMealtimesScenarioPayload = (
       }
     ]
   }
-});
+};
+};
 
 /**
  * Scenario 4: bundles per Menu API Guidelines.

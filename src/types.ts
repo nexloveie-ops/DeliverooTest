@@ -59,4 +59,6 @@ export type UploadMenuResult = {
   bodySource?: "get" | "template";
   firstPut?: MenuUploadAttempt;
   secondPut?: MenuUploadAttempt;
+  /** Scenario 6: unique revision baked into item prices/descriptions. */
+  menuRevision?: string;
 };

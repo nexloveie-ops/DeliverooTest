@@ -13,6 +13,7 @@ import {
   SCENARIO13_ITEM_COUNT,
   type WebhookUploadBodyStrategy
 } from "./menuPayloads.js";
+import { runMenuV3Upload } from "./deliverooMenuV3.js";
 import { waitForMenuUploadWebhook } from "./menuWebhookStore.js";
 import type {
   ItemAvailabilityStatus,
@@ -241,6 +242,11 @@ type UploadMenuOptions = {
   scenario13PreferTemplate?: boolean;
   /** Scenario 13: opt in to GET-then-extend instead of template. */
   scenario13PreferGet?: boolean;
+  /** Scenario 13: `v3` (default) S3 + job, or `v1` direct PUT. */
+  uploadApi?: "v1" | "v3";
+  /** Poll V3 job status after publish (default true for scenario13 v3). */
+  pollV3Job?: boolean;
+  jobPollTimeoutMs?: number;
 };
 
 const sleep = (ms: number): Promise<void> =>
@@ -521,11 +527,60 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
       built.source === "get-extended" || built.source === "get-revision" ? "get" : "template";
     const bodyJson = built.bodyJson;
     menuBody = JSON.parse(bodyJson) as Record<string, unknown>;
+    const uploadApi = options?.uploadApi ?? "v3";
+
+    if (uploadApi === "v3") {
+      const v3Steps = await runMenuV3Upload({
+        brandId,
+        menuId,
+        bodyJson,
+        token,
+        pollJob: options?.pollV3Job !== false,
+        jobPollTimeoutMs: options?.jobPollTimeoutMs
+      });
+      const presignUrl = v3Steps.presign.url;
+      const base = buildUploadResultBase(presignUrl, brandId, siteId, menuId, scenario, menuBody);
+      const result: UploadMenuResult = {
+        ...base,
+        method: "V3",
+        uploadPath: "v3",
+        url: presignUrl,
+        matchExistingMenu: false,
+        deliveroo: v3Steps.publishJob.deliveroo,
+        bodySource,
+        menuRevision: revision,
+        itemCount: built.itemCount,
+        v3: {
+          s3Url: v3Steps.presign.s3Url,
+          version: v3Steps.presign.version,
+          jobId: v3Steps.publishJob.jobId,
+          jobStatus: v3Steps.jobPoll?.status,
+          jobPollAttempts: v3Steps.jobPoll?.attempts,
+          s3HttpStatus: v3Steps.s3Upload.httpStatus
+        }
+      };
+      console.log(
+        JSON.stringify({
+          msg: "deliveroo.menu.upload",
+          scenario: "scenario13",
+          uploadPath: "v3",
+          menuId,
+          bodySource: result.bodySource,
+          scenario13Source: built.source,
+          itemCount: built.itemCount,
+          jobId: result.v3?.jobId,
+          jobStatus: result.v3?.jobStatus
+        })
+      );
+      return result;
+    }
+
     deliveroo = await putMenuJson(url, token, bodyJson);
     const base = buildUploadResultBase(url, brandId, siteId, menuId, scenario, menuBody);
     const uploadResult = parseMenuUploadResult(deliveroo);
     const result: UploadMenuResult = {
       ...base,
+      uploadPath: "v1",
       matchExistingMenu: uploadResult.matchExistingMenu,
       result: uploadResult.result,
       deliveroo,
@@ -537,6 +592,7 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
       JSON.stringify({
         msg: "deliveroo.menu.upload",
         scenario: "scenario13",
+        uploadPath: "v1",
         menuId,
         bodySource: result.bodySource,
         scenario13Source: built.source,
@@ -1339,6 +1395,11 @@ export const runScenario13MenuAndUnavailabilities = async (options?: {
   siteDrnId?: string;
   step?: "upload" | "wait" | "post" | "all";
   webhookTimeoutMs?: number;
+  uploadApi?: "v1" | "v3";
+  scenario13PreferTemplate?: boolean;
+  scenario13PreferGet?: boolean;
+  pollV3Job?: boolean;
+  jobPollTimeoutMs?: number;
 }): Promise<Scenario13RunResult> => {
   const step = options?.step ?? "all";
   if (!options?.menuId?.trim()) {
@@ -1352,7 +1413,12 @@ export const runScenario13MenuAndUnavailabilities = async (options?: {
       menuId,
       siteId: options.siteId,
       siteDrnId: options.siteDrnId,
-      scenario: "scenario13"
+      scenario: "scenario13",
+      uploadApi: options.uploadApi,
+      scenario13PreferTemplate: options.scenario13PreferTemplate,
+      scenario13PreferGet: options.scenario13PreferGet,
+      pollV3Job: options.pollV3Job,
+      jobPollTimeoutMs: options.jobPollTimeoutMs
     });
   }
 

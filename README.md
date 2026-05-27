@@ -50,6 +50,8 @@ Query/body parameters:
 
 - `menuId` / `menu_id` — **must match** the ID entered in the Developer Portal scenario
 - `scenario` — `mealtimes` (default), `bundles` (4), `nochange` (5), `webhook` (6), `imagecache` (7), `scenario13` (13), or `default`
+- `uploadApi` — for `scenario13`: `v3` (default, [Menu V3 large upload](https://api-docs.deliveroo.com/docs/menu-api-overview)) or `v1` (direct PUT)
+- `pollV3Job` — set `false` to skip job status polling after V3 publish (webhook still required for Portal)
 - `siteId` / `site_id` — optional (defaults to `DELIVEROO_LOCATION_ID`, e.g. `100121`)
 - `siteDrnId` / `site_drn_id` — optional scenario parameter; resolved to `site_id` when possible
 
@@ -143,6 +145,8 @@ curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario12?step=post" \
 
 **Scenario 13:** Do **not** send unavailabilities until **`menu.upload_result`** webhook arrives (unless upload returned `MATCH_EXISTING_MENU`). Flow: **Start** → upload menu with **≥100 items** → wait for webhook (~1 min) → **POST** item unavailabilities.
 
+By default Scenario 13 uses **Menu V3** (presigned S3 → publish job → same `menu.upload_result` webhook). Use `?uploadApi=v1` to force the legacy v1 PUT.
+
 ```bash
 # All-in-one (blocks up to 90s waiting for webhook on this Cloud Run instance):
 curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario13?step=all" \
@@ -161,7 +165,7 @@ curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario13?step=post" \
 
 POST sets `s13-item-001` to **unavailable** after webhook.
 
-**Scenario 13 troubleshooting:** Portal needs webhook `http_status` **200**. If you see **500** in `webhook-status`, re-upload after deploy (payload uses 10 categories, no per-item images — 100× the same image URL caused sandbox processing errors).
+**Scenario 13 troubleshooting:** Portal needs webhook `http_status` **200**. If v1 PUT keeps returning **500**, deploy latest code (V3 default) and retry with a **fresh** Portal `menu_id` after Start. Response `put.uploadPath` should be `"v3"` with `put.v3.jobId`. Legacy v1: `?uploadApi=v1`. Payload uses 10 categories and one mealtime cover (1920×1080); per-item images caused sandbox processing errors.
 
 **Scenario 6:** Portal `menu_id` can stay **`123156468`**. Flow: **Start** → within **30s** upload with `scenario=webhook` → wait **1–5 min** for Deliveroo `POST` to `/webhooks/deliveroo` (must return **200**).
 

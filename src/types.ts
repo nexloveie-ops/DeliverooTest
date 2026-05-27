@@ -138,8 +138,19 @@ export type Scenario13RunResult = {
   error?: string;
 };
 
+export type MenuV3UploadSummary = {
+  s3Url?: string;
+  version?: string;
+  jobId?: string;
+  jobStatus?: string;
+  jobPollAttempts?: number;
+  s3HttpStatus?: number;
+};
+
 export type UploadMenuResult = {
-  method: "PUT";
+  method: "PUT" | "V3";
+  /** `v1` direct PUT; `v3` S3 + publish job (large menus). */
+  uploadPath?: "v1" | "v3";
   url: string;
   brandId: string;
   siteId: string;
@@ -170,4 +181,6 @@ export type UploadMenuResult = {
   payloadDiffersFromStored?: boolean;
   /** Scenario 6: `minimal-template` (default) or `mutate` (explicit strategy). */
   webhookPayloadShape?: "mutate" | "minimal-template";
+  /** Present when uploadPath is v3. */
+  v3?: MenuV3UploadSummary;
 };

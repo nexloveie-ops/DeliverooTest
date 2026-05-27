@@ -247,6 +247,9 @@ const handleMenuUpload = async (
     webhookBodyStrategy?: "template" | "mutate" | "auto";
     scenario13PreferTemplate?: boolean;
     scenario13PreferGet?: boolean;
+    uploadApi?: "v1" | "v3";
+    pollV3Job?: boolean;
+    jobPollTimeoutMs?: number;
   },
   res: express.Response
 ): Promise<void> => {
@@ -271,9 +274,13 @@ const handleMenuUpload = async (
             : put.scenario === "imagecache"
               ? "Scenario 7: payload includes ITEM image URL with cache headers support (HEAD should return ETag or Last-Modified)."
               : put.scenario === "scenario13"
-                ? put.matchExistingMenu
-                  ? "Scenario 13: MATCH_EXISTING_MENU — upload a differing body or use a fresh menu_id after Start."
-                  : `Scenario 13: uploaded ${SCENARIO13_ITEM_COUNT} items. Wait for menu.upload_result webhook, then POST unavailabilities (step=post or /scenario13?step=all).`
+                ? put.uploadPath === "v3"
+                  ? put.v3?.jobStatus === "failed"
+                    ? "Scenario 13 (V3): publish job failed — check put.v3 and Cloud Run logs; retry with fresh menu_id after Start."
+                    : `Scenario 13 (Menu V3): ${SCENARIO13_ITEM_COUNT} items via S3 + publish job (jobId=${put.v3?.jobId ?? "n/a"}). Wait for menu.upload_result webhook (httpStatus 200), then POST unavailabilities. Use ?uploadApi=v1 to force legacy PUT.`
+                  : put.matchExistingMenu
+                    ? "Scenario 13: MATCH_EXISTING_MENU — upload a differing body or use a fresh menu_id after Start."
+                    : `Scenario 13 (v1 PUT): uploaded ${SCENARIO13_ITEM_COUNT} items. Wait for menu.upload_result webhook, then POST unavailabilities. Prefer default V3 (omit uploadApi) for large menus.`
             : "Per Deliveroo docs: trigger scenario Start first, then call this within ~30s using API Suite sandbox credentials. PUT must match menu_id in the portal."
     });
   } catch (error) {
@@ -304,6 +311,9 @@ const readUploadParams = (
   webhookBodyStrategy?: "template" | "mutate" | "auto";
   scenario13PreferTemplate?: boolean;
   scenario13PreferGet?: boolean;
+  uploadApi?: "v1" | "v3";
+  pollV3Job?: boolean;
+  jobPollTimeoutMs?: number;
 } => {
   const q = (key: string): string | undefined => {
     const value = query[key];
@@ -358,6 +368,17 @@ const readUploadParams = (
     q("scenario13PreferGet") === "true" ||
     q("preferGet") === "true" ||
     body?.scenario13PreferGet === true;
+  const uploadApiRaw =
+    q("uploadApi") ??
+    (typeof body?.uploadApi === "string" ? body.uploadApi : undefined);
+  const uploadApi =
+    uploadApiRaw === "v1" || uploadApiRaw === "v3" ? uploadApiRaw : undefined;
+  const pollV3Job =
+    q("pollV3Job") === "false" || body?.pollV3Job === false ? false : undefined;
+  const jobPollTimeoutRaw =
+    q("jobPollTimeoutMs") ??
+    (typeof body?.jobPollTimeoutMs === "number" ? String(body.jobPollTimeoutMs) : undefined);
+  const jobPollTimeoutMs = jobPollTimeoutRaw ? Number(jobPollTimeoutRaw) : undefined;
 
   return {
     menuId,
@@ -370,7 +391,10 @@ const readUploadParams = (
     generateMenuId,
     webhookBodyStrategy,
     scenario13PreferTemplate,
-    scenario13PreferGet
+    scenario13PreferGet,
+    uploadApi,
+    pollV3Job,
+    jobPollTimeoutMs
   };
 };
 
@@ -679,13 +703,22 @@ app.post("/deliveroo/menu/scenario13", async (req, res) => {
     return;
   }
 
+  const uploadParams = readUploadParams(req.query, body);
+
   try {
     const result = await runScenario13MenuAndUnavailabilities({
       menuId: siteParams.menuId,
       siteId: siteParams.siteId,
       siteDrnId: siteParams.siteDrnId,
       step,
-      webhookTimeoutMs: Number.isFinite(webhookTimeoutMs) ? webhookTimeoutMs : undefined
+      webhookTimeoutMs: Number.isFinite(webhookTimeoutMs) ? webhookTimeoutMs : undefined,
+      uploadApi: uploadParams.uploadApi,
+      scenario13PreferTemplate: uploadParams.scenario13PreferTemplate,
+      scenario13PreferGet: uploadParams.scenario13PreferGet,
+      pollV3Job: uploadParams.pollV3Job,
+      jobPollTimeoutMs: Number.isFinite(uploadParams.jobPollTimeoutMs)
+        ? uploadParams.jobPollTimeoutMs
+        : undefined
     });
     const ok = step !== "all" || (!result.error && Boolean(result.post));
     res.status(ok ? 200 : 504).json({

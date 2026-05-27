@@ -29,6 +29,16 @@ type SiteBrandResponse = {
   brand_id?: string[] | string;
 };
 
+type UploadSiteOptions = {
+  siteId?: string;
+  siteDrnId?: string;
+};
+
+type SiteContext = {
+  siteId: string;
+  brandId: string;
+};
+
 const accessTokenCache: { token: string; expiresAtMs: number } = {
   token: "",
   expiresAtMs: 0
@@ -65,8 +75,8 @@ const getAccessToken = async (): Promise<string> => {
   return token;
 };
 
-const resolveSiteId = (): string => {
-  const siteId = config.deliverooSiteId || config.deliverooLocationId;
+const resolveSiteId = (siteIdOverride?: string): string => {
+  const siteId = siteIdOverride || config.deliverooSiteId || config.deliverooLocationId;
   if (!siteId) {
     throw new Error("DELIVEROO_SITE_ID (or DELIVEROO_LOCATION_ID) is missing");
   }
@@ -100,15 +110,76 @@ const resolveMenuId = (siteId: string): string => {
   return config.deliverooMenuId || `test-menu-${siteId}`;
 };
 
+const resolveSiteContext = async (
+  token: string,
+  options?: UploadSiteOptions
+): Promise<SiteContext> => {
+  const initialSiteId = resolveSiteId(options?.siteId);
+  if (!options?.siteDrnId) {
+    return {
+      siteId: initialSiteId,
+      brandId: await resolveBrandId(token, initialSiteId)
+    };
+  }
+
+  // Try direct lookup first, in case site DRN is accepted as restaurant location id.
+  try {
+    const directUrl = `${config.deliverooBaseUrl}/site/v1/restaurant_locations/${options.siteDrnId}`;
+    const directResponse = await axios.get<SiteBrandResponse>(directUrl, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      timeout: 10000
+    });
+    const directSiteId = directResponse.data.id;
+    if (directSiteId) {
+      return {
+        siteId: directSiteId,
+        brandId: await resolveBrandId(token, directSiteId)
+      };
+    }
+  } catch {
+    // Fall back to brand sites listing below.
+  }
+
+  const brandId = await resolveBrandId(token, initialSiteId);
+  const sitesUrl = `${config.deliverooBaseUrl}/site/v1/brands/${brandId}/sites`;
+  const sitesResponse = await axios.get(sitesUrl, {
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+    timeout: 10000
+  });
+  const root = toRecord(sitesResponse.data);
+  const list = Array.isArray(root.sites) ? root.sites : Array.isArray(sitesResponse.data) ? sitesResponse.data : [];
+
+  const matched = list.find((site) => {
+    const node = toRecord(site);
+    const drn = asString(node.drn_id) ?? asString(node.site_drn_id);
+    const id = asString(node.id) ?? asString(node.site_id);
+    return drn === options.siteDrnId || id === options.siteDrnId;
+  });
+
+  const matchedNode = toRecord(matched);
+  const resolvedSiteId = asString(matchedNode.id) ?? asString(matchedNode.site_id);
+  if (!resolvedSiteId) {
+    throw new Error(`Could not resolve siteId from siteDrnId=${options.siteDrnId}`);
+  }
+
+  return { siteId: resolvedSiteId, brandId };
+};
+
 type UploadMenuOptions = {
   menuId?: string;
+  siteId?: string;
+  siteDrnId?: string;
   payload?: unknown;
 };
 
 export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<unknown> => {
   const token = await getAccessToken();
-  const siteId = resolveSiteId();
-  const brandId = await resolveBrandId(token, siteId);
+  const context = await resolveSiteContext(token, {
+    siteId: options?.siteId,
+    siteDrnId: options?.siteDrnId
+  });
+  const siteId = context.siteId;
+  const brandId = context.brandId;
   const menuId = options?.menuId ?? resolveMenuId(siteId);
 
   const defaultPayload = {

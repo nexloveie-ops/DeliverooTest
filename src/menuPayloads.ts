@@ -226,7 +226,7 @@ export const buildScenario13LargeMenuPayload = (
             en: `Scenario 13 (${SCENARIO13_ITEM_COUNT} items, rev ${revSuffix})`
           },
           category_ids: categoryIds,
-          image: { url: WEBHOOK_MEALTIME_COVER_DAY_URL },
+          image: {},
           schedule: [0, 1, 2, 3, 4, 5, 6].map((day) => ({
             day_of_week: day,
             time_periods: [{ start: "00:00:00", end: "23:59:00" }]
@@ -234,6 +234,119 @@ export const buildScenario13LargeMenuPayload = (
         }
       ]
     }
+  };
+};
+
+const countMenuItems = (menu: Record<string, unknown>): number => {
+  const items = Array.isArray(menu.items) ? menu.items : [];
+  return items.filter((raw) => toRecord(raw).type === "ITEM").length;
+};
+
+/**
+ * Extend a GET menu (Portal Start) to ≥100 ITEM rows instead of replacing the whole menu.
+ */
+export const extendMenuToScenario13 = (
+  currentMenuJson: string,
+  menuId: string,
+  siteId: string,
+  revision: string
+): Record<string, unknown> | undefined => {
+  try {
+    const stripped = stripServerFieldsFromMenu(JSON.parse(currentMenuJson)) as Record<string, unknown>;
+    const menu = toRecord(stripped.menu);
+    if (!menu.items || !menu.categories) return undefined;
+
+    const revSuffix = revision.slice(-6);
+    const items = Array.isArray(menu.items) ? [...menu.items] : [];
+    const categories = Array.isArray(menu.categories) ? [...menu.categories] : [];
+    const existingIds = new Set(
+      items.map((raw) => toRecord(raw).id).filter((id): id is string => typeof id === "string")
+    );
+
+    let nextIndex = 1;
+    while (countMenuItems({ items }) < SCENARIO13_ITEM_COUNT) {
+      const id = scenario13ItemId(nextIndex);
+      nextIndex += 1;
+      if (existingIds.has(id)) continue;
+      existingIds.add(id);
+      items.push(
+        itemBase({
+          id,
+          type: "ITEM",
+          name: { en: `S13 Item ${id}` },
+          description: { en: `Added item (rev ${revSuffix})` },
+          operational_name: id.replace(/-/g, ""),
+          plu: `S13${String(nextIndex).padStart(3, "0")}`,
+          price_info: { price: 600 + nextIndex, overrides: [] },
+          modifier_ids: []
+        })
+      );
+    }
+
+    const addCategoryId = "s13-cat-added";
+    const newItemIds = items
+      .map((raw) => toRecord(raw).id)
+      .filter((id): id is string => typeof id === "string" && id.startsWith(SCENARIO13_ITEM_ID_PREFIX));
+
+    let targetCategory = categories.find((raw) => toRecord(raw).id === addCategoryId);
+    if (!targetCategory) {
+      targetCategory = { id: addCategoryId, name: { en: "Scenario 13 Items" }, item_ids: [] };
+      categories.push(targetCategory);
+    }
+    const cat = toRecord(targetCategory);
+    const catItemIds = Array.isArray(cat.item_ids)
+      ? [...cat.item_ids.filter((id): id is string => typeof id === "string")]
+      : [];
+    for (const id of newItemIds) {
+      if (!catItemIds.includes(id)) catItemIds.push(id);
+    }
+    cat.item_ids = catItemIds;
+
+    const mealtimes = Array.isArray(menu.mealtimes) ? [...menu.mealtimes] : [];
+    if (mealtimes.length > 0) {
+      const meal = toRecord(mealtimes[0]);
+      const mealCatIds = Array.isArray(meal.category_ids)
+        ? [...meal.category_ids.filter((id): id is string => typeof id === "string")]
+        : [];
+      if (!mealCatIds.includes(addCategoryId)) mealCatIds.push(addCategoryId);
+      meal.category_ids = mealCatIds;
+      mealtimes[0] = meal;
+    }
+
+    return {
+      ...stripped,
+      name: menuId,
+      site_ids: [siteId],
+      menu: { ...menu, items, categories, mealtimes, modifiers: menu.modifiers ?? [] }
+    };
+  } catch {
+    return undefined;
+  }
+};
+
+export const buildScenario13MenuJson = (
+  menuId: string,
+  siteId: string,
+  revision: string,
+  currentMenuJson?: string
+): { bodyJson: string; source: "get-extended" | "template"; itemCount: number } => {
+  if (currentMenuJson) {
+    const extended = extendMenuToScenario13(currentMenuJson, menuId, siteId, revision);
+    if (extended) {
+      const menu = toRecord(extended.menu);
+      return {
+        bodyJson: JSON.stringify(extended),
+        source: "get-extended",
+        itemCount: countMenuItems(menu)
+      };
+    }
+  }
+  const payload = buildScenario13LargeMenuPayload(menuId, siteId, revision);
+  const menu = toRecord(payload.menu);
+  return {
+    bodyJson: JSON.stringify(payload),
+    source: "template",
+    itemCount: countMenuItems(menu)
   };
 };
 

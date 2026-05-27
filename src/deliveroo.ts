@@ -8,6 +8,7 @@ import {
   countBundlesInPayload,
   serializeNoChangeMenuBody,
   type MenuScenario,
+  buildScenario13MenuJson,
   scenario13ItemId,
   SCENARIO13_ITEM_COUNT,
   type WebhookUploadBodyStrategy
@@ -495,6 +496,43 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
       })
     );
 
+    return result;
+  } else if (scenario === "scenario13" && !options?.payload) {
+    const revision = menuRevision ?? String(Date.now());
+    let currentMenuJson: string | undefined;
+    try {
+      currentMenuJson = await fetchMenuForReplay(brandId, menuId, token);
+    } catch (error) {
+      if (!axios.isAxiosError(error) || error.response?.status !== 404) {
+        throw error;
+      }
+    }
+    const built = buildScenario13MenuJson(menuId, siteId, revision, currentMenuJson);
+    bodySource = built.source === "get-extended" ? "get" : "template";
+    const bodyJson = built.bodyJson;
+    menuBody = JSON.parse(bodyJson) as Record<string, unknown>;
+    deliveroo = await putMenuJson(url, token, bodyJson);
+    const base = buildUploadResultBase(url, brandId, siteId, menuId, scenario, menuBody);
+    const uploadResult = parseMenuUploadResult(deliveroo);
+    const result: UploadMenuResult = {
+      ...base,
+      matchExistingMenu: uploadResult.matchExistingMenu,
+      result: uploadResult.result,
+      deliveroo,
+      bodySource,
+      menuRevision: revision,
+      itemCount: built.itemCount
+    };
+    console.log(
+      JSON.stringify({
+        msg: "deliveroo.menu.upload",
+        scenario: "scenario13",
+        menuId,
+        bodySource: result.bodySource,
+        itemCount: built.itemCount,
+        matchExistingMenu: result.matchExistingMenu
+      })
+    );
     return result;
   } else {
     const body =

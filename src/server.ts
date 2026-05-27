@@ -143,7 +143,7 @@ const handleMenuUpload = async (
             ? "Scenario 6: Deliveroo returned MATCH_EXISTING_MENU — click Start in the Portal, then upload again within 30s (or omit menuId to generate a new one)."
             : put.payloadDiffersFromStored === false
               ? "Scenario 6: PUT body matched the stored menu — retry upload after Start."
-              : "Scenario 6: Start → upload within 30s (same menu_id as Portal). Existing menus use GET+mutate; new menus use mealtimes-lite. Poll webhook-status until httpStatus is 200 (not 500)."
+              : "Scenario 6: Start → upload within 30s (same menu_id as Portal). Default uses minimal template; pass webhookBodyStrategy=mutate only if needed. Use create=true for fresh menu_id. Poll webhook-status until httpStatus is 200."
           : put.scenario === "nochange"
             ? put.doubleUpload
               ? "Scenario 5: two identical PUTs using GET menu JSON (Deliveroo canonical form). Call only ONCE per Start with double:true."
@@ -212,7 +212,9 @@ const readUploadParams = (
   const delayMs = delayRaw ? Number(delayRaw) : undefined;
   const generateMenuId =
     q("generateMenuId") === "true" ||
-    body?.generateMenuId === true;
+    q("create") === "true" ||
+    body?.generateMenuId === true ||
+    body?.create === true;
   const strategyRaw =
     q("webhookBodyStrategy") ??
     (typeof body?.webhookBodyStrategy === "string" ? body.webhookBodyStrategy : undefined);

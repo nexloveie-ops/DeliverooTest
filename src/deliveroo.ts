@@ -386,7 +386,7 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
     menuBody = JSON.parse(resolved.bodyJson) as Record<string, unknown>;
     deliveroo = await putMenuJson(url, token, resolved.bodyJson);
   } else if (scenario === "webhook" && !options?.payload) {
-    const webhookStrategy = options?.webhookBodyStrategy ?? "auto";
+    const webhookStrategy = options?.webhookBodyStrategy ?? "template";
     let revision = menuRevision ?? String(Date.now());
     let currentMenuJson: string | undefined;
     let storedMenuSha256: string | undefined;
@@ -406,7 +406,7 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
       siteId,
       revision,
       currentMenuJson,
-      currentMenuJson ? (webhookStrategy === "template" ? "template" : "mutate") : webhookStrategy
+      webhookStrategy
     );
     if (
       currentMenuJson &&
@@ -426,13 +426,14 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
       const parsed = parseMenuUploadResult(deliveroo);
       if (!parsed.matchExistingMenu) break;
       revision = String(Date.now() + attempt + 1);
-      if (currentMenuJson) {
-        bodyJson = buildWebhookUploadBody(menuId, siteId, revision, currentMenuJson, "mutate");
-        bodySource = "get";
-      } else {
-        bodyJson = JSON.stringify(buildWebhookScenarioPayload(menuId, siteId, revision));
-        bodySource = "template";
-      }
+      bodyJson = buildWebhookUploadBody(
+        menuId,
+        siteId,
+        revision,
+        currentMenuJson,
+        webhookStrategy
+      );
+      bodySource = currentMenuJson && webhookStrategy === "mutate" ? "get" : "template";
       uploadBodySha256 = crypto.createHash("sha256").update(bodyJson).digest("hex");
       payloadDiffersFromStored = true;
     }
@@ -450,7 +451,7 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
       storedMenuSha256,
       uploadBodySha256,
       payloadDiffersFromStored,
-      webhookPayloadShape: currentMenuJson ? "mutate" : "mealtimes-lite"
+      webhookPayloadShape: currentMenuJson && webhookStrategy === "mutate" ? "mutate" : "minimal-template"
     };
 
     console.log(

@@ -201,25 +201,13 @@ export const buildMinimalWebhookScenarioPayload = (
 };
 
 /**
- * Scenario 6 create path: Scenario-3-style mealtimes (no modifiers) for brand-new menu IDs.
+ * Scenario 6 default path: strict minimal payload from portal checklist.
  */
 export const buildWebhookScenarioPayload = (
   menuId: string,
   siteId: string,
   revision: string = String(Date.now())
-): Record<string, unknown> => {
-  const payload = buildMealtimesScenarioPayload(menuId, siteId, revision);
-  const menu = toRecord(payload.menu);
-  const items = Array.isArray(menu.items) ? menu.items : [];
-  const itemOnly = items.filter((raw) => toRecord(raw).type === "ITEM");
-  menu.items = itemOnly;
-  menu.modifiers = [];
-  for (const raw of itemOnly) {
-    const item = toRecord(raw);
-    item.modifier_ids = [];
-  }
-  return payload;
-};
+): Record<string, unknown> => buildMinimalWebhookScenarioPayload(menuId, siteId, revision);
 
 export type WebhookUploadBodyStrategy = "template" | "mutate" | "auto";
 
@@ -250,8 +238,8 @@ const buildMutatedMenuJson = (currentMenuJson: string, revision: string): string
 
 /**
  * Scenario 6 PUT body.
- * - Existing menu (GET): mutate canonical menu in place (avoids async 500 from full template replace).
- * - New menu (404): mealtimes-lite template with revision bump.
+ * - Default: minimal template (best fit for Portal validation).
+ * - Optional mutate mode: only when explicitly requested.
  */
 export const buildWebhookUploadBody = (
   menuId: string,
@@ -262,24 +250,15 @@ export const buildWebhookUploadBody = (
 ): string => {
   const templateJson = JSON.stringify(buildWebhookScenarioPayload(menuId, siteId, revision));
 
-  if (!currentMenuJson) {
+  if (!currentMenuJson || strategy === "template" || strategy === "auto") {
     return templateJson;
   }
-
-  if (strategy === "template") {
-    return templateJson;
-  }
-
-  const mutatedJson = buildMutatedMenuJson(currentMenuJson, revision);
-  if (mutatedJson) {
-    return mutatedJson;
-  }
-
   if (strategy === "mutate") {
-    return templateJson;
+    const mutatedJson = buildMutatedMenuJson(currentMenuJson, revision);
+    if (mutatedJson) {
+      return mutatedJson;
+    }
   }
-
-  // auto: existing menu — template only if mutate could not produce a diff
   return templateJson;
 };
 

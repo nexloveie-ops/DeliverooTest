@@ -411,12 +411,11 @@ export const buildScenario13MenuJson = (
   };
 };
 
-/** Stable JPEG covers (curl-verified HTTP 200). Avoid Unsplash + Wikimedia /thumb/ paths. */
-export const WEBHOOK_MEALTIME_COVER_DAY_URL =
-  "https://placehold.co/800x600.jpg";
+/** Mealtime hero cover: min 1920×1080, 16:9 per Menu API Guidelines. */
+export const WEBHOOK_MEALTIME_COVER_DAY_URL = "https://placehold.co/1920x1080.jpg";
 
 export const WEBHOOK_MEALTIME_COVER_EVENING_URL =
-  "https://picsum.photos/seed/deliveroo-evening-menu/800/600.jpg";
+  "https://picsum.photos/seed/deliveroo-evening-menu/1920/1080";
 
 /** Stable item image URL; HEAD returns ETag for Scenario 7 checks. */
 export const ITEM_IMAGE_CACHEABLE_URL = "https://placehold.co/640x480.jpg";

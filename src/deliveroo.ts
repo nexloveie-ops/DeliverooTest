@@ -237,8 +237,10 @@ type UploadMenuOptions = {
   generateMenuId?: boolean;
   /** Scenario 6: `template` (default), `mutate` (GET+revision), or `auto`. */
   webhookBodyStrategy?: WebhookUploadBodyStrategy;
-  /** Scenario 13: skip GET extend and use full 100-item template (fresh menu after 404). */
+  /** Scenario 13: force full 100-item template (default). Set false to allow GET extend. */
   scenario13PreferTemplate?: boolean;
+  /** Scenario 13: opt in to GET-then-extend instead of template. */
+  scenario13PreferGet?: boolean;
 };
 
 const sleep = (ms: number): Promise<void> =>
@@ -509,7 +511,9 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
         throw error;
       }
     }
-    const preferTemplate = options?.scenario13PreferTemplate === true;
+    // Default template (clean 100 items); use ?preferGet=true to extend Portal GET menu.
+    const preferTemplate =
+      options?.scenario13PreferGet !== true && options?.scenario13PreferTemplate !== false;
     const built = buildScenario13MenuJson(menuId, siteId, revision, currentMenuJson, {
       preferTemplate
     });

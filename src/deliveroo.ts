@@ -385,51 +385,35 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
       ],
       mealtimes: [
         {
-          id: "breakfast-menu",
-          name: { en: "Breakfast Menu" },
-          description: { en: "Morning breakfast items available from 7am to 11am." },
-          category_ids: ["cat-breakfast", "cat-main"],
+          id: "daytime-menu",
+          name: { en: "Daytime Menu" },
+          description: { en: "Daytime menu with breakfast and lunch items." },
+          category_ids: ["cat-breakfast", "cat-main", "cat-special"],
           image: { url: "https://images.unsplash.com/photo-1533089860892-a7c6f0a986b6" },
           schedule: [
-            { day_of_week: 0, time_periods: [{ start: "07:00:00", end: "11:00:00" }] },
-            { day_of_week: 1, time_periods: [{ start: "07:00:00", end: "11:00:00" }] },
-            { day_of_week: 2, time_periods: [{ start: "07:00:00", end: "11:00:00" }] },
-            { day_of_week: 3, time_periods: [{ start: "07:00:00", end: "11:00:00" }] },
-            { day_of_week: 4, time_periods: [{ start: "07:00:00", end: "11:00:00" }] },
-            { day_of_week: 5, time_periods: [{ start: "07:00:00", end: "11:00:00" }] },
-            { day_of_week: 6, time_periods: [{ start: "07:00:00", end: "11:00:00" }] }
+            { day_of_week: 0, time_periods: [{ start: "00:00:00", end: "11:59:59" }] },
+            { day_of_week: 1, time_periods: [{ start: "00:00:00", end: "11:59:59" }] },
+            { day_of_week: 2, time_periods: [{ start: "00:00:00", end: "11:59:59" }] },
+            { day_of_week: 3, time_periods: [{ start: "00:00:00", end: "11:59:59" }] },
+            { day_of_week: 4, time_periods: [{ start: "00:00:00", end: "11:59:59" }] },
+            { day_of_week: 5, time_periods: [{ start: "00:00:00", end: "11:59:59" }] },
+            { day_of_week: 6, time_periods: [{ start: "00:00:00", end: "11:59:59" }] }
           ]
         },
         {
-          id: "lunch-dinner-menu",
-          name: { en: "Lunch & Dinner Menu" },
-          description: { en: "Main lunch and dinner menu served from 11am to 10pm." },
+          id: "evening-menu",
+          name: { en: "Evening Menu" },
+          description: { en: "Evening and late night menu with dinner specials." },
           category_ids: ["cat-main", "cat-special"],
-          image: { url: "https://images.unsplash.com/photo-1550547660-d9450f859349" },
-          schedule: [
-            { day_of_week: 0, time_periods: [{ start: "11:00:00", end: "22:00:00" }] },
-            { day_of_week: 1, time_periods: [{ start: "11:00:00", end: "22:00:00" }] },
-            { day_of_week: 2, time_periods: [{ start: "11:00:00", end: "22:00:00" }] },
-            { day_of_week: 3, time_periods: [{ start: "11:00:00", end: "22:00:00" }] },
-            { day_of_week: 4, time_periods: [{ start: "11:00:00", end: "22:00:00" }] },
-            { day_of_week: 5, time_periods: [{ start: "11:00:00", end: "22:00:00" }] },
-            { day_of_week: 6, time_periods: [{ start: "11:00:00", end: "22:00:00" }] }
-          ]
-        },
-        {
-          id: "late-night-menu",
-          name: { en: "Late Night Menu" },
-          description: { en: "Late night specials available from 10pm to midnight." },
-          category_ids: ["cat-special"],
           image: { url: "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38" },
           schedule: [
-            { day_of_week: 0, time_periods: [{ start: "22:00:00", end: "23:59:00" }] },
-            { day_of_week: 1, time_periods: [{ start: "22:00:00", end: "23:59:00" }] },
-            { day_of_week: 2, time_periods: [{ start: "22:00:00", end: "23:59:00" }] },
-            { day_of_week: 3, time_periods: [{ start: "22:00:00", end: "23:59:00" }] },
-            { day_of_week: 4, time_periods: [{ start: "22:00:00", end: "23:59:00" }] },
-            { day_of_week: 5, time_periods: [{ start: "22:00:00", end: "23:59:00" }] },
-            { day_of_week: 6, time_periods: [{ start: "22:00:00", end: "23:59:00" }] }
+            { day_of_week: 0, time_periods: [{ start: "12:00:00", end: "23:59:00" }] },
+            { day_of_week: 1, time_periods: [{ start: "12:00:00", end: "23:59:00" }] },
+            { day_of_week: 2, time_periods: [{ start: "12:00:00", end: "23:59:00" }] },
+            { day_of_week: 3, time_periods: [{ start: "12:00:00", end: "23:59:00" }] },
+            { day_of_week: 4, time_periods: [{ start: "12:00:00", end: "23:59:00" }] },
+            { day_of_week: 5, time_periods: [{ start: "12:00:00", end: "23:59:00" }] },
+            { day_of_week: 6, time_periods: [{ start: "12:00:00", end: "23:59:00" }] }
           ]
         }
       ]

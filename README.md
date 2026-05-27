@@ -21,7 +21,7 @@ It does **not** include inventory deduction, BOM rules, or reporting.
   Uploads a test menu to Deliveroo (`menu/v1`) using OAuth client credentials.  
   You can pass `menuId` / `menu_id`, and `siteId` / `site_id` or `siteDrnId` / `site_drn_id` in JSON body to match Deliveroo scenario input.
   If `siteDrnId` cannot be resolved by Sites API, the service falls back to configured/default site.
-  Default payload includes multiple mealtimes (breakfast, lunch/dinner, late night) for the mealtimes scenario.
+  Default payload includes multiple mealtimes (daytime + evening, full 7d/24h coverage) for the mealtimes scenario.
 
 - `POST /webhooks/deliveroo`  
   Receives Deliveroo webhook, validates signature (if configured), performs basic idempotency check, normalizes event, and optionally forwards.
@@ -47,8 +47,37 @@ Copy `.env.example` to `.env` and fill values:
 
 ```bash
 npm install
+cp .env.example .env   # fill DELIVEROO_CLIENT_ID / DELIVEROO_CLIENT_SECRET
 npm run dev
 ```
+
+## Before push / deploy (recommended)
+
+Avoid redeploy loops: prove it locally against Deliveroo sandbox first.
+
+**Terminal 1** — keep the server running:
+
+```bash
+npm run dev
+```
+
+**Terminal 2** — smoke test (must see `PASS`):
+
+```bash
+# generic local menu id
+npm run smoke:local
+
+# or match a Deliveroo scenario run exactly
+MENU_ID=123156468 SITE_DRN_ID=607326a3-ef2d-4b8b-b013-a91c52c3954f npm run smoke:local
+```
+
+Only after `PASS`:
+
+1. `git push`
+2. redeploy Cloud Run
+3. trigger the scenario in Developer Portal and call the same upload once more if the scenario window requires it
+
+If upload fails locally, read the JSON `detail` field (Deliveroo validation message) before pushing.
 
 ## Deploy to Google Cloud Run (via GitHub Actions)
 

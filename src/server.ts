@@ -88,8 +88,15 @@ app.post("/deliveroo/menu/upload", async (req, res) => {
     const result = await uploadDeliverooMenu({ menuId, siteId, siteDrnId, payload });
     res.json({ ok: true, result });
   } catch (error) {
+    const axiosDetail =
+      typeof error === "object" &&
+      error !== null &&
+      "response" in error &&
+      typeof (error as { response?: { data?: unknown } }).response?.data !== "undefined"
+        ? (error as { response: { data: unknown } }).response.data
+        : undefined;
     const message = error instanceof Error ? error.message : "unknown error";
-    res.status(500).json({ ok: false, error: message });
+    res.status(500).json({ ok: false, error: message, detail: axiosDetail });
   }
 });
 

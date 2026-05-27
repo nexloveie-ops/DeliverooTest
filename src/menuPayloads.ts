@@ -41,7 +41,7 @@ export const buildMenuPayload = (
     return buildBundlesScenarioPayload(menuId, siteId);
   }
   if (scenario === "nochange") {
-    return buildScenario5Payload(menuId, siteId);
+    return buildMealtimesScenarioPayload(menuId, siteId);
   }
   if (scenario === "mealtimes") {
     return buildMealtimesScenarioPayload(menuId, siteId);
@@ -49,72 +49,23 @@ export const buildMenuPayload = (
   return buildMealtimesScenarioPayload(menuId, siteId);
 };
 
-/** Fixed 7-day schedule (literal — no runtime .map) for stable Scenario 5 payloads. */
-const SCENARIO5_WEEKLY_SCHEDULE = [
-  { day_of_week: 0, time_periods: [{ start: "00:00:00", end: "23:59:00" }] },
-  { day_of_week: 1, time_periods: [{ start: "00:00:00", end: "23:59:00" }] },
-  { day_of_week: 2, time_periods: [{ start: "00:00:00", end: "23:59:00" }] },
-  { day_of_week: 3, time_periods: [{ start: "00:00:00", end: "23:59:00" }] },
-  { day_of_week: 4, time_periods: [{ start: "00:00:00", end: "23:59:00" }] },
-  { day_of_week: 5, time_periods: [{ start: "00:00:00", end: "23:59:00" }] },
-  { day_of_week: 6, time_periods: [{ start: "00:00:00", end: "23:59:00" }] }
-] as const;
-
-const SCENARIO5_MEALTIME_IMAGE =
-  "https://images.unsplash.com/photo-1533089860892-a7c6f0a986b6";
-
 /**
- * Scenario 5: minimal frozen menu (1 mealtime, 1 category, 1 item).
- * First and second PUT in the portal window must send this exact structure.
+ * Scenario 5: must re-upload the same JSON as Scenario 3 (mealtimes), byte-for-byte.
  * @see https://api-docs.deliveroo.com/docs/menu-api-overview (MATCH_EXISTING_MENU)
  */
-export const buildScenario5Payload = (
+export const buildMatchExistingMenuPayload = (
   menuId: string,
   siteId: string
-): Record<string, unknown> => ({
-  name: menuId,
-  site_ids: [siteId],
-  menu: {
-    categories: [
-      {
-        id: "cat-scenario5",
-        name: { en: "Main Menu" },
-        item_ids: ["item-scenario5-burger"]
-      }
-    ],
-    items: [
-      itemBase({
-        id: "item-scenario5-burger",
-        type: "ITEM",
-        name: { en: "Scenario 5 Burger" },
-        description: { en: "Sandbox item for unchanged menu upload test." },
-        operational_name: "scenario5-burger",
-        plu: "S5BRG001",
-        price_info: { price: 1000, overrides: [] },
-        barcodes: ["5012345678900"],
-        modifier_ids: []
-      })
-    ],
-    modifiers: [],
-    mealtimes: [
-      {
-        id: "scenario5-all-day",
-        name: { en: "All Day Menu" },
-        description: { en: "Scenario 5 cover photo mealtime." },
-        category_ids: ["cat-scenario5"],
-        image: { url: SCENARIO5_MEALTIME_IMAGE },
-        schedule: SCENARIO5_WEEKLY_SCHEDULE
-      }
-    ]
-  }
-});
+): Record<string, unknown> => buildMealtimesScenarioPayload(menuId, siteId);
 
-/** @deprecated Use buildScenario5Payload */
-export const buildMatchExistingMenuPayload = buildScenario5Payload;
+/** Stable JSON bytes for two identical PUTs in the Portal scenario window. */
+export const serializeMealtimesMenuBody = (menuId: string, siteId: string): string =>
+  JSON.stringify(buildMealtimesScenarioPayload(menuId, siteId));
 
-/** Stable JSON bytes for two identical PUTs (Scenario 5). */
-export const serializeScenario5MenuBody = (menuId: string, siteId: string): string =>
-  JSON.stringify(buildScenario5Payload(menuId, siteId));
+export const serializeNoChangeMenuBody = serializeMealtimesMenuBody;
+
+/** @deprecated Use serializeNoChangeMenuBody */
+export const serializeScenario5MenuBody = serializeNoChangeMenuBody;
 
 /** Scenario 3: multiple mealtimes, 7d/24h non-overlapping schedules */
 export const buildMealtimesScenarioPayload = (

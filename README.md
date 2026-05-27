@@ -49,9 +49,9 @@ Response includes audit block `put`: `{ method, url, brandId, siteId, menuId, si
 |------------|-------------|-------------------|
 | `mealtimes` | Menu upload with mealtimes | 2 mealtimes, 7×24h schedules |
 | `bundles` | Menu upload with bundles | 2× `BUNDLE`, `bundle-item` modifiers, price overrides, `party_size` — per [Menu API Guidelines](https://api-docs.deliveroo.com/docs/menu-api-guidelines) |
-| `nochange` | Update menu with no changes (Scenario 5) | Frozen minimal menu; use **`"double": true`** to send two byte-identical PUTs in one call — [Menu API Overview](https://api-docs.deliveroo.com/docs/menu-api-overview) |
+| `nochange` | Update menu with no changes (Scenario 5) | **Same JSON as `mealtimes` (Scenario 3)**. Use **`"double": true`** once per Start (two identical PUTs, 10s apart) — [Menu API Overview](https://api-docs.deliveroo.com/docs/menu-api-overview) |
 
-Top-level `matchExistingMenu` reflects the **second** PUT when `double: true`. Portal expects upload 2 to match upload 1 in the same scenario run (not an older bundles/mealtimes menu).
+Top-level `matchExistingMenu` reflects the **second** PUT when `double: true`. Do **not** call `bundles` or extra uploads on the same `menu_id` in the same scenario run — Portal compares the 1st and 2nd PUT bodies in that window.
 
 ### Webhooks (`/webhooks/deliveroo`)
 
@@ -127,8 +127,10 @@ curl -X POST "https://<cloud-run-url>/deliveroo/menu/upload" \
 # Scenario 5 (Start → within ~30s, two identical PUTs in one request):
 curl -X POST "https://<cloud-run-url>/deliveroo/menu/upload" \
   -H "Content-Type: application/json" \
-  -d '{"menuId":"123156468","scenario":"nochange","double":true,"site_drn_id":"<from scenario parameters>"}'
+  -d '{"menuId":"123156468","scenario":"nochange","double":true,"delayMs":10000,"site_drn_id":"<from scenario parameters>"}'
 ```
+
+If Scenario 5 failed before: your `menu_id` may have been overwritten by `bundles` or the old minimal `nochange` burger menu. Run Scenario 3 (`mealtimes`) once on that id, then Scenario 5 with **only one** `double:true` call after Start.
 
 Or browser:
 

@@ -1,9 +1,10 @@
+import crypto from "node:crypto";
 import axios from "axios";
 import { config } from "./config.js";
 import {
   buildMenuPayload,
   countBundlesInPayload,
-  serializeScenario5MenuBody,
+  serializeNoChangeMenuBody,
   type MenuScenario
 } from "./menuPayloads.js";
 import type { MenuUploadAttempt, NormalizedMenuItem, UploadMenuResult } from "./types.js";
@@ -203,6 +204,26 @@ type UploadMenuOptions = {
   payload?: unknown;
   /** Scenario 5: two PUTs with the same JSON bytes (first + second identical upload). */
   doubleUpload?: boolean;
+  /** Milliseconds to wait between first and second PUT (default 10000). */
+  delayMs?: number;
+};
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const fetchMenuForReplay = async (
+  brandId: string,
+  menuId: string,
+  token: string
+): Promise<string> => {
+  const getUrl = `${config.deliverooBaseUrl}/menu/v1/brands/${brandId}/menus/${menuId}`;
+  const response = await axios.get(getUrl, {
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+    timeout: 20000
+  });
+  return JSON.stringify(response.data);
 };
 
 const putMenuJson = async (
@@ -273,11 +294,16 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
   const url = `${config.deliverooBaseUrl}/menu/v1/brands/${brandId}/menus/${menuId}`;
 
   if (scenario === "nochange" && options?.doubleUpload) {
-    const bodyJson = serializeScenario5MenuBody(menuId, siteId);
+    const bodyJson = serializeNoChangeMenuBody(menuId, siteId);
     const menuBody = JSON.parse(bodyJson) as Record<string, unknown>;
     const base = buildUploadResultBase(url, brandId, siteId, menuId, scenario, menuBody);
+    const delayMs = options.delayMs ?? 10_000;
+    const bodySha256 = crypto.createHash("sha256").update(bodyJson).digest("hex");
 
     const firstDeliveroo = await putMenuJson(url, token, bodyJson);
+    await sleep(delayMs);
+    const replayJson = await fetchMenuForReplay(brandId, menuId, token);
+    const payloadsIdentical = bodyJson === replayJson;
     const secondDeliveroo = await putMenuJson(url, token, bodyJson);
     const firstPut = toUploadAttempt(1, firstDeliveroo);
     const secondPut = toUploadAttempt(2, secondDeliveroo);
@@ -298,6 +324,10 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
         url: result.url,
         menuId: result.menuId,
         siteId: result.siteId,
+        delayMs,
+        bodySha256,
+        replaySha256: crypto.createHash("sha256").update(replayJson).digest("hex"),
+        payloadsIdentical,
         firstResult: firstPut.result,
         secondResult: secondPut.result,
         matchExistingMenu: result.matchExistingMenu
@@ -310,11 +340,11 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
   const body =
     options?.payload ??
     (scenario === "nochange"
-      ? (JSON.parse(serializeScenario5MenuBody(menuId, siteId)) as Record<string, unknown>)
+      ? (JSON.parse(serializeNoChangeMenuBody(menuId, siteId)) as Record<string, unknown>)
       : buildMenuPayload(menuId, siteId, scenario));
   const menuBody = toRecord(body);
   const base = buildUploadResultBase(url, brandId, siteId, menuId, scenario, menuBody);
-  const bodyJson = scenario === "nochange" ? serializeScenario5MenuBody(menuId, siteId) : JSON.stringify(body);
+  const bodyJson = scenario === "nochange" ? serializeNoChangeMenuBody(menuId, siteId) : JSON.stringify(body);
   const deliveroo =
     scenario === "nochange"
       ? await putMenuJson(url, token, bodyJson)

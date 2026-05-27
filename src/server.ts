@@ -93,6 +93,7 @@ const handleMenuUpload = async (
     scenario?: "default" | "mealtimes" | "bundles" | "nochange";
     payload?: unknown;
     doubleUpload?: boolean;
+    delayMs?: number;
   },
   res: express.Response
 ): Promise<void> => {
@@ -105,8 +106,8 @@ const handleMenuUpload = async (
       hint:
         put.scenario === "nochange"
           ? put.doubleUpload
-            ? "Scenario 5: two identical PUTs sent. Portal expects the second to match the first (MATCH_EXISTING_MENU)."
-            : "Scenario 5: call with \"double\":true after Start, or upload twice with scenario=nochange and the same menu_id."
+            ? "Scenario 5: two identical mealtimes PUTs (Scenario 3 payload). Call only ONCE per Start with double:true. Do not mix bundles/nochange singles in the same run."
+            : "Scenario 5: use scenario=nochange (same JSON as mealtimes). Prefer double:true once per Start."
           : "Per Deliveroo docs: trigger scenario Start first, then call this within ~30s using API Suite sandbox credentials. PUT must match menu_id in the portal."
     });
   } catch (error) {
@@ -132,6 +133,7 @@ const readUploadParams = (
   scenario?: "default" | "mealtimes" | "bundles" | "nochange";
   payload?: unknown;
   doubleUpload?: boolean;
+  delayMs?: number;
 } => {
   const q = (key: string): string | undefined => {
     const value = query[key];
@@ -162,8 +164,12 @@ const readUploadParams = (
     q("double") === "true" ||
     q("doubleUpload") === "true" ||
     parseDoubleUpload(body);
+  const delayRaw =
+    q("delayMs") ??
+    (typeof body?.delayMs === "number" ? String(body.delayMs) : undefined);
+  const delayMs = delayRaw ? Number(delayRaw) : undefined;
 
-  return { menuId, siteId, siteDrnId, scenario, payload, doubleUpload };
+  return { menuId, siteId, siteDrnId, scenario, payload, doubleUpload, delayMs };
 };
 
 app.get("/deliveroo/menu/upload", async (req, res) => {

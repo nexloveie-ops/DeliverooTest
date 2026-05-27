@@ -6,6 +6,8 @@ export type MenuWebhookRecord = {
   brandId?: string;
   httpStatus?: number;
   occurredAt: string;
+  processingError?: string;
+  imageErrors?: Array<{ url?: string; message?: string }>;
 };
 
 export type WebhookInboundLog = {
@@ -17,6 +19,8 @@ export type WebhookInboundLog = {
   event?: string;
   menuId?: string;
   menuHttpStatus?: number;
+  processingError?: string;
+  imageErrors?: Array<{ url?: string; message?: string }>;
   hmacPresent: boolean;
   sequenceGuidPresent: boolean;
   hmacVerified: boolean;
@@ -38,7 +42,9 @@ export const recordMenuWebhook = (event: NormalizedMenuEvent): void => {
     eventId: event.eventId,
     brandId: event.brandId,
     httpStatus: event.httpStatus,
-    occurredAt: event.occurredAt
+    occurredAt: event.occurredAt,
+    processingError: event.processingError,
+    imageErrors: event.imageErrors
   });
   byMenuId.set(event.menuId, list.slice(0, MAX_PER_MENU));
 };

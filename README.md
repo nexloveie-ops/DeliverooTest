@@ -51,7 +51,7 @@ Response includes audit block `put`: `{ method, url, brandId, siteId, menuId, si
 | `mealtimes` | Menu upload with mealtimes | 2 mealtimes, 7×24h schedules |
 | `bundles` | Menu upload with bundles | 2× `BUNDLE`, `bundle-item` modifiers, price overrides, `party_size` — per [Menu API Guidelines](https://api-docs.deliveroo.com/docs/menu-api-guidelines) |
 | `nochange` | Update menu with no changes (Scenario 5) | **GET menu → PUT the same canonical JSON twice** (`double: true`). Template JSON ≠ stored menu and fails Portal comparison — [Menu API Overview](https://api-docs.deliveroo.com/docs/menu-api-overview) |
-| `webhook` | Menu upload + `menu.upload_result` webhook (Scenario 6) | **Mealtimes template + revision bump** (differs from stored GET/bundles menu). Retries if `MATCH_EXISTING_MENU`. **Start** in Portal → upload within **30s**. Webhook → `POST /webhooks/deliveroo`, poll `GET /deliveroo/menu/webhook-status?menuId=...` |
+| `webhook` | Menu upload + `menu.upload_result` webhook (Scenario 6) | **Minimal compliant menu** (1 mealtime + 1 category + 1 item) + revision bump. Check `processingError` / `imageErrors` on `webhook-status` if `httpStatus` is 500. **Start** → upload within **30s**. Webhook → `POST /webhooks/deliveroo` |
 
 Complete **Scenario 3** on the same `menu_id` first so GET returns a menu. `matchExistingMenu` on the second PUT should be `true`.
 

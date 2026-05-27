@@ -45,6 +45,29 @@ const rememberOnce = (key: string): boolean => {
 const toRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 
+const parseMenuUploadErrors = (
+  uploadResult: Record<string, unknown>
+): { processingError?: string; imageErrors?: Array<{ url?: string; message?: string }> } => {
+  const errors = toRecord(uploadResult.errors);
+  const processing =
+    typeof errors.processing === "string" && errors.processing.length > 0
+      ? errors.processing
+      : undefined;
+  const imageErrors: Array<{ url?: string; message?: string }> = [];
+  if (Array.isArray(errors.images)) {
+    for (const raw of errors.images) {
+      const node = toRecord(raw);
+      const url = typeof node.url === "string" ? node.url : undefined;
+      const message = typeof node.message === "string" ? node.message : undefined;
+      if (url || message) imageErrors.push({ url, message });
+    }
+  }
+  return {
+    processingError: processing,
+    imageErrors: imageErrors.length > 0 ? imageErrors : undefined
+  };
+};
+
 const isLegacyPosOrderWebhook = (parsed: Record<string, unknown>): boolean => {
   const eventType = String(parsed.event_type ?? parsed.type ?? "");
   return eventType === "new_order" || eventType === "cancel_order";
@@ -343,6 +366,7 @@ app.post("/webhooks/deliveroo", async (req, res) => {
       const siteIds = Array.isArray(uploadResult.site_ids)
         ? uploadResult.site_ids.filter((id): id is string => typeof id === "string")
         : undefined;
+      const { processingError, imageErrors } = parseMenuUploadErrors(uploadResult);
 
       const normalized: NormalizedMenuEvent = {
         channel: "deliveroo",
@@ -353,6 +377,8 @@ app.post("/webhooks/deliveroo", async (req, res) => {
         siteIds,
         httpStatus:
           typeof uploadResult.http_status === "number" ? uploadResult.http_status : undefined,
+        processingError,
+        imageErrors,
         occurredAt: new Date().toISOString(),
         payload: parsed
       };
@@ -362,7 +388,9 @@ app.post("/webhooks/deliveroo", async (req, res) => {
           msg: "deliveroo.webhook.menu.upload_result",
           menuId: normalized.menuId,
           brandId: normalized.brandId,
-          httpStatus: normalized.httpStatus
+          httpStatus: normalized.httpStatus,
+          processingError: normalized.processingError,
+          imageErrors: normalized.imageErrors
         })
       );
 
@@ -375,6 +403,8 @@ app.post("/webhooks/deliveroo", async (req, res) => {
         event: normalized.eventType,
         menuId: normalized.menuId,
         menuHttpStatus: normalized.httpStatus,
+        processingError: normalized.processingError,
+        imageErrors: normalized.imageErrors,
         hmacVerified: true
       });
 

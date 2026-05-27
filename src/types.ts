@@ -28,6 +28,8 @@ export type NormalizedMenuEvent = {
   brandId?: string;
   siteIds?: string[];
   httpStatus?: number;
+  processingError?: string;
+  imageErrors?: Array<{ url?: string; message?: string }>;
   occurredAt: string;
   payload: unknown;
 };
@@ -67,4 +69,6 @@ export type UploadMenuResult = {
   uploadBodySha256?: string;
   /** False only when PUT body matched stored GET bytes (Portal will reject). */
   payloadDiffersFromStored?: boolean;
+  /** Scenario 6: `minimal` or `mealtimes` payload shape. */
+  webhookPayloadShape?: "minimal" | "mealtimes";
 };

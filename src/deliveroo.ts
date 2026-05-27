@@ -439,7 +439,8 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
       menuRevision: revision,
       storedMenuSha256,
       uploadBodySha256,
-      payloadDiffersFromStored
+      payloadDiffersFromStored,
+      webhookPayloadShape: "minimal"
     };
 
     console.log(

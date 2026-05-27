@@ -143,15 +143,68 @@ export const buildMenuPayload = (
   return buildMealtimesScenarioPayload(menuId, siteId);
 };
 
+/** Stable JPEG cover for mealtime async image fetch (Scenario 6). */
+const WEBHOOK_MEALTIME_COVER_URL =
+  "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6d/Good_Food_Display_-_NCI_Visuals_Online.jpg/320px-Good_Food_Display_-_NCI_Visuals_Online.jpg";
+
 /**
- * Scenario 6: mealtimes-shaped menu with a unique revision so PUT triggers async processing
- * (not MATCH_EXISTING_MENU). Use a new menu_id in the Portal or rely on revision bump.
+ * Scenario 6 minimal menu — matches Portal checklist with no modifiers/bundles.
+ * 1 mealtime (cover + name + description), 1 category, 1 item linked via category.item_ids.
+ */
+export const buildMinimalWebhookScenarioPayload = (
+  menuId: string,
+  siteId: string,
+  revision: string
+): Record<string, unknown> => {
+  const bump = revisionPriceBump(revision);
+  const revSuffix = revision.slice(-6);
+  const itemId = "webhook-item-1";
+  const categoryId = "webhook-cat-1";
+  const mealtimeId = "webhook-meal-1";
+
+  return {
+    name: menuId,
+    site_ids: [siteId],
+    menu: {
+      categories: [{ id: categoryId, name: { en: "Main" }, item_ids: [itemId] }],
+      items: [
+        itemBase({
+          id: itemId,
+          type: "ITEM",
+          name: { en: "Webhook Test Item" },
+          description: { en: `Scenario 6 sandbox item (rev ${revSuffix})` },
+          operational_name: "webhook-test-item",
+          plu: `WH${revSuffix}`,
+          price_info: { price: 1000 + bump, overrides: [] },
+          modifier_ids: []
+        })
+      ],
+      modifiers: [],
+      mealtimes: [
+        {
+          id: mealtimeId,
+          name: { en: "All Day Menu" },
+          description: { en: `Webhook scenario mealtime (rev ${revSuffix})` },
+          category_ids: [categoryId],
+          image: { url: WEBHOOK_MEALTIME_COVER_URL },
+          schedule: [0, 1, 2, 3, 4, 5, 6].map((day) => ({
+            day_of_week: day,
+            time_periods: [{ start: "00:00:00", end: "23:59:00" }]
+          }))
+        }
+      ]
+    }
+  };
+};
+
+/**
+ * Scenario 6: minimal compliant menu + revision bump (not MATCH_EXISTING_MENU).
  */
 export const buildWebhookScenarioPayload = (
   menuId: string,
   siteId: string,
   revision: string = String(Date.now())
-): Record<string, unknown> => buildMealtimesScenarioPayload(menuId, siteId, revision);
+): Record<string, unknown> => buildMinimalWebhookScenarioPayload(menuId, siteId, revision);
 
 export type WebhookUploadBodyStrategy = "template" | "mutate" | "auto";
 

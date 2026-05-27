@@ -226,7 +226,7 @@ export const buildScenario13LargeMenuPayload = (
             en: `Scenario 13 (${SCENARIO13_ITEM_COUNT} items, rev ${revSuffix})`
           },
           category_ids: categoryIds,
-          image: {},
+          image: { url: WEBHOOK_MEALTIME_COVER_DAY_URL },
           schedule: [0, 1, 2, 3, 4, 5, 6].map((day) => ({
             day_of_week: day,
             time_periods: [{ start: "00:00:00", end: "23:59:00" }]
@@ -240,6 +240,28 @@ export const buildScenario13LargeMenuPayload = (
 const countMenuItems = (menu: Record<string, unknown>): number => {
   const items = Array.isArray(menu.items) ? menu.items : [];
   return items.filter((raw) => toRecord(raw).type === "ITEM").length;
+};
+
+/** Remove mealtime image URLs — async processing often 500s on sandbox image fetch. */
+const stripMealtimeImages = (menuRoot: Record<string, unknown>): void => {
+  const menu = toRecord(menuRoot.menu);
+  const mealtimes = Array.isArray(menu.mealtimes) ? menu.mealtimes : [];
+  for (const raw of mealtimes) {
+    const mealtime = toRecord(raw);
+    mealtime.image = {};
+  }
+};
+
+/**
+ * When menu already has ≥100 ITEMs: mutate prices/names so PUT differs (avoids MATCH_EXISTING_MENU).
+ */
+export const applyScenario13Revision = (
+  menuRoot: Record<string, unknown>,
+  revision: string
+): Record<string, unknown> => {
+  const revised = applyWebhookRevision(menuRoot, revision);
+  stripMealtimeImages(revised);
+  return revised;
 };
 
 /**
@@ -262,6 +284,11 @@ export const extendMenuToScenario13 = (
     const existingIds = new Set(
       items.map((raw) => toRecord(raw).id).filter((id): id is string => typeof id === "string")
     );
+    const usedPlus = new Set(
+      items
+        .map((raw) => toRecord(raw).plu)
+        .filter((plu): plu is string => typeof plu === "string")
+    );
 
     let nextIndex = 1;
     while (countMenuItems({ items }) < SCENARIO13_ITEM_COUNT) {
@@ -269,14 +296,19 @@ export const extendMenuToScenario13 = (
       nextIndex += 1;
       if (existingIds.has(id)) continue;
       existingIds.add(id);
+      let plu = `S13${revSuffix}${String(nextIndex).padStart(3, "0")}`;
+      while (usedPlus.has(plu)) {
+        plu = `S13${revSuffix}${String(nextIndex).padStart(3, "0")}x`;
+      }
+      usedPlus.add(plu);
       items.push(
         itemBase({
           id,
           type: "ITEM",
           name: { en: `S13 Item ${id}` },
           description: { en: `Added item (rev ${revSuffix})` },
-          operational_name: id.replace(/-/g, ""),
-          plu: `S13${String(nextIndex).padStart(3, "0")}`,
+          operational_name: `s13${String(nextIndex).padStart(3, "0")}`,
+          plu,
           price_info: { price: 600 + nextIndex, overrides: [] },
           modifier_ids: []
         })
@@ -303,44 +335,73 @@ export const extendMenuToScenario13 = (
     cat.item_ids = catItemIds;
 
     const mealtimes = Array.isArray(menu.mealtimes) ? [...menu.mealtimes] : [];
-    if (mealtimes.length > 0) {
-      const meal = toRecord(mealtimes[0]);
+    for (let m = 0; m < mealtimes.length; m += 1) {
+      const meal = toRecord(mealtimes[m]);
       const mealCatIds = Array.isArray(meal.category_ids)
         ? [...meal.category_ids.filter((id): id is string => typeof id === "string")]
         : [];
       if (!mealCatIds.includes(addCategoryId)) mealCatIds.push(addCategoryId);
       meal.category_ids = mealCatIds;
-      mealtimes[0] = meal;
+      meal.image = {};
+      mealtimes[m] = meal;
     }
 
-    return {
+    const root = {
       ...stripped,
       name: menuId,
       site_ids: [siteId],
       menu: { ...menu, items, categories, mealtimes, modifiers: menu.modifiers ?? [] }
     };
+    return applyScenario13Revision(root, revision);
   } catch {
     return undefined;
   }
 };
 
+export type Scenario13BodySource = "get-extended" | "get-revision" | "template";
+
 export const buildScenario13MenuJson = (
   menuId: string,
   siteId: string,
   revision: string,
-  currentMenuJson?: string
-): { bodyJson: string; source: "get-extended" | "template"; itemCount: number } => {
-  if (currentMenuJson) {
-    const extended = extendMenuToScenario13(currentMenuJson, menuId, siteId, revision);
-    if (extended) {
-      const menu = toRecord(extended.menu);
-      return {
-        bodyJson: JSON.stringify(extended),
-        source: "get-extended",
-        itemCount: countMenuItems(menu)
-      };
+  currentMenuJson?: string,
+  options?: { preferTemplate?: boolean }
+): { bodyJson: string; source: Scenario13BodySource; itemCount: number } => {
+  if (currentMenuJson && !options?.preferTemplate) {
+    try {
+      const stripped = stripServerFieldsFromMenu(
+        JSON.parse(currentMenuJson)
+      ) as Record<string, unknown>;
+      const menu = toRecord(stripped.menu);
+      const itemCount = countMenuItems(menu);
+
+      if (itemCount >= SCENARIO13_ITEM_COUNT) {
+        const revised = applyScenario13Revision(
+          { ...stripped, name: menuId, site_ids: [siteId] },
+          revision
+        );
+        const revisedMenu = toRecord(revised.menu);
+        return {
+          bodyJson: JSON.stringify(revised),
+          source: "get-revision",
+          itemCount: countMenuItems(revisedMenu)
+        };
+      }
+
+      const extended = extendMenuToScenario13(currentMenuJson, menuId, siteId, revision);
+      if (extended) {
+        const extendedMenu = toRecord(extended.menu);
+        return {
+          bodyJson: JSON.stringify(extended),
+          source: "get-extended",
+          itemCount: countMenuItems(extendedMenu)
+        };
+      }
+    } catch {
+      // Fall through to full template.
     }
   }
+
   const payload = buildScenario13LargeMenuPayload(menuId, siteId, revision);
   const menu = toRecord(payload.menu);
   return {

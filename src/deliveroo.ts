@@ -237,6 +237,8 @@ type UploadMenuOptions = {
   generateMenuId?: boolean;
   /** Scenario 6: `template` (default), `mutate` (GET+revision), or `auto`. */
   webhookBodyStrategy?: WebhookUploadBodyStrategy;
+  /** Scenario 13: skip GET extend and use full 100-item template (fresh menu after 404). */
+  scenario13PreferTemplate?: boolean;
 };
 
 const sleep = (ms: number): Promise<void> =>
@@ -507,8 +509,12 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
         throw error;
       }
     }
-    const built = buildScenario13MenuJson(menuId, siteId, revision, currentMenuJson);
-    bodySource = built.source === "get-extended" ? "get" : "template";
+    const preferTemplate = options?.scenario13PreferTemplate === true;
+    const built = buildScenario13MenuJson(menuId, siteId, revision, currentMenuJson, {
+      preferTemplate
+    });
+    bodySource =
+      built.source === "get-extended" || built.source === "get-revision" ? "get" : "template";
     const bodyJson = built.bodyJson;
     menuBody = JSON.parse(bodyJson) as Record<string, unknown>;
     deliveroo = await putMenuJson(url, token, bodyJson);
@@ -529,6 +535,7 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
         scenario: "scenario13",
         menuId,
         bodySource: result.bodySource,
+        scenario13Source: built.source,
         itemCount: built.itemCount,
         matchExistingMenu: result.matchExistingMenu
       })

@@ -245,6 +245,7 @@ const handleMenuUpload = async (
     delayMs?: number;
     generateMenuId?: boolean;
     webhookBodyStrategy?: "template" | "mutate" | "auto";
+    scenario13PreferTemplate?: boolean;
   },
   res: express.Response
 ): Promise<void> => {
@@ -300,6 +301,7 @@ const readUploadParams = (
   delayMs?: number;
   generateMenuId?: boolean;
   webhookBodyStrategy?: "template" | "mutate" | "auto";
+  scenario13PreferTemplate?: boolean;
 } => {
   const q = (key: string): string | undefined => {
     const value = query[key];
@@ -346,6 +348,10 @@ const readUploadParams = (
     strategyRaw === "template" || strategyRaw === "mutate" || strategyRaw === "auto"
       ? strategyRaw
       : undefined;
+  const scenario13PreferTemplate =
+    q("scenario13PreferTemplate") === "true" ||
+    q("preferTemplate") === "true" ||
+    body?.scenario13PreferTemplate === true;
 
   return {
     menuId,
@@ -356,7 +362,8 @@ const readUploadParams = (
     doubleUpload,
     delayMs,
     generateMenuId,
-    webhookBodyStrategy
+    webhookBodyStrategy,
+    scenario13PreferTemplate
   };
 };
 

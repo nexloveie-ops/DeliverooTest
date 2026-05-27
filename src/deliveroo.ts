@@ -18,6 +18,7 @@ import type {
   NormalizedMenuItem,
   ReplaceAllUnavailabilitiesPayload,
   Scenario8StepResult,
+  Scenario9Diagnose,
   Scenario9GetResult,
   Scenario9PutResult,
   UploadMenuResult
@@ -701,6 +702,58 @@ export const buildScenario9PutPayload = (
   };
 };
 
+export const diagnoseScenario9Context = async (
+  options: UnavailabilitySiteOptions
+): Promise<{
+  siteId: string;
+  brandId: string;
+  menuId: string;
+  menuV1ItemIds: string[];
+  scenarioItemsOnMenuV1: Record<string, boolean>;
+  siteV2ScenarioItems: string[];
+}> => {
+  if (!options.menuId?.trim()) {
+    throw new Error("menuId is required for Scenario 9 diagnose");
+  }
+  const token = await getAccessToken();
+  const { siteId, brandId } = await resolveSiteContext(token, options);
+  const menuId = options.menuId.trim();
+
+  let menuV1ItemIds: string[] = [];
+  try {
+    const menuJson = JSON.parse(await fetchMenuForReplay(brandId, menuId, token)) as Record<
+      string,
+      unknown
+    >;
+    const menu = toRecord(menuJson.menu);
+    const items = Array.isArray(menu.items) ? menu.items : [];
+    menuV1ItemIds = items
+      .map((raw) => asString(toRecord(raw).id))
+      .filter((id): id is string => Boolean(id));
+  } catch {
+    menuV1ItemIds = [];
+  }
+
+  const siteItems = await fetchDeliverooMenu();
+  const siteV2ScenarioItems = siteItems
+    .map((item) => item.itemId)
+    .filter((id) => SCENARIO8_ITEM_IDS.includes(id as (typeof SCENARIO8_ITEM_IDS)[number]));
+
+  const scenarioItemsOnMenuV1: Record<string, boolean> = {};
+  for (const itemId of SCENARIO8_ITEM_IDS) {
+    scenarioItemsOnMenuV1[itemId] = menuV1ItemIds.includes(itemId);
+  }
+
+  return {
+    siteId,
+    brandId,
+    menuId,
+    menuV1ItemIds,
+    scenarioItemsOnMenuV1,
+    siteV2ScenarioItems
+  };
+};
+
 export const validateScenario9GetState = (
   parsed: ReplaceAllUnavailabilitiesPayload
 ): string[] => {
@@ -760,7 +813,12 @@ export const replaceAllItemUnavailabilities = async (
 
 export const runScenario9Unavailabilities = async (
   options?: UnavailabilitySiteOptions & { step?: "get" | "put" | "both" }
-): Promise<{ get?: Scenario9GetResult; put?: Scenario9PutResult; getWarnings?: string[] }> => {
+): Promise<{
+  get?: Scenario9GetResult;
+  put?: Scenario9PutResult;
+  getWarnings?: string[];
+  diagnose?: Scenario9Diagnose;
+}> => {
   const step = options?.step ?? "both";
   if (!options?.menuId?.trim()) {
     throw new Error(
@@ -773,16 +831,24 @@ export const runScenario9Unavailabilities = async (
     menuId: options.menuId,
     apiVersion: "v1"
   };
-  const out: { get?: Scenario9GetResult; put?: Scenario9PutResult; getWarnings?: string[] } = {};
+  const out: {
+    get?: Scenario9GetResult;
+    put?: Scenario9PutResult;
+    getWarnings?: string[];
+    diagnose?: Scenario9Diagnose;
+  } = {};
 
   let parsedFromGet: ReplaceAllUnavailabilitiesPayload | undefined;
+
+  const diagnose = await diagnoseScenario9Context(siteOpts);
+  out.diagnose = diagnose;
 
   if (step === "get" || step === "both") {
     const getResult = await getItemUnavailabilities(siteOpts);
     const parsed = parseReplaceAllUnavailabilities(getResult.deliveroo);
     parsedFromGet = parsed;
     out.getWarnings = validateScenario9GetState(parsed);
-    out.get = { ...getResult, parsed };
+    out.get = { ...getResult, parsed, diagnose };
   }
 
   if (step === "put" || step === "both") {
@@ -794,6 +860,16 @@ export const runScenario9Unavailabilities = async (
       parseReplaceAllUnavailabilities((await getItemUnavailabilities(siteOpts)).deliveroo);
     if (!parsedFromGet) {
       out.getWarnings = validateScenario9GetState(current);
+    }
+    const getReady =
+      out.getWarnings?.length === 0 &&
+      current.unavailable_ids.includes("orange_juice") &&
+      current.hidden_ids.includes("granola");
+    if (!getReady) {
+      throw new Error(
+        "Scenario 9 GET state not ready (need orange_juice unavailable + granola hidden after Portal Start). " +
+          "Refusing PUT to avoid Portal body mismatch. See getWarnings and diagnose on step=get."
+      );
     }
     const putBody = buildScenario9PutPayload(current);
     const putResult = await replaceAllItemUnavailabilities(putBody, siteOpts);

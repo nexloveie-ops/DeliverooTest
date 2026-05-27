@@ -69,8 +69,18 @@ export type Scenario8StepResult = ItemUnavailabilitiesResult & {
   itemUnavailabilities: ItemUnavailabilityUpdate[];
 };
 
+export type Scenario9Diagnose = {
+  siteId: string;
+  brandId: string;
+  menuId: string;
+  menuV1ItemIds: string[];
+  scenarioItemsOnMenuV1: Record<string, boolean>;
+  siteV2ScenarioItems: string[];
+};
+
 export type Scenario9GetResult = ItemUnavailabilitiesResult & {
   parsed: ReplaceAllUnavailabilitiesPayload;
+  diagnose?: Scenario9Diagnose;
 };
 
 export type Scenario9PutResult = ItemUnavailabilitiesResult & {

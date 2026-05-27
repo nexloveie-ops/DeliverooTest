@@ -472,6 +472,7 @@ app.post("/deliveroo/menu/scenario9", async (req, res) => {
         whole_milk: "unavailable (appended on PUT)"
       },
       getWarnings: result.getWarnings,
+      diagnose: result.diagnose,
       ...result,
       hint:
         step === "get"

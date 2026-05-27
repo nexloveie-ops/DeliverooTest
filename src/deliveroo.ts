@@ -24,6 +24,16 @@ const asNumber = (value: unknown): number | undefined => {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 };
 
+const parseMenuUploadResult = (
+  data: unknown
+): { matchExistingMenu: boolean; result?: string } => {
+  const result = asString(toRecord(data).result);
+  return {
+    matchExistingMenu: result === "MATCH_EXISTING_MENU",
+    result
+  };
+};
+
 type OAuthTokenResponse = {
   access_token: string;
   expires_in: number;
@@ -224,6 +234,7 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
     timeout: 20000
   });
 
+  const uploadResult = parseMenuUploadResult(response.data);
   const result: UploadMenuResult = {
     method: "PUT",
     url,
@@ -234,6 +245,8 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
     scenario,
     mealtimesCount,
     bundlesCount,
+    matchExistingMenu: uploadResult.matchExistingMenu,
+    result: uploadResult.result,
     deliveroo: response.data
   };
 
@@ -248,7 +261,9 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
       siteIds: result.siteIds,
       scenario: result.scenario,
       mealtimesCount: result.mealtimesCount,
-      bundlesCount: result.bundlesCount
+      bundlesCount: result.bundlesCount,
+      matchExistingMenu: result.matchExistingMenu,
+      result: result.result
     })
   );
 

@@ -16,10 +16,27 @@ if [ -n "$SITE_DRN_ID" ]; then
 fi
 BODY+="}"
 
-echo "==> menu upload (${MENU_ID})"
-RESP=$(curl -fsS -X POST "${BASE_URL}/deliveroo/menu/upload" \
-  -H "Content-Type: application/json" \
-  --data "$BODY")
+if [ "$SCENARIO" = "nochange" ]; then
+  echo "==> seed menu (mealtimes) for MATCH_EXISTING_MENU"
+  SEED_BODY=$(printf '{"menuId":"%s","scenario":"mealtimes"' "$MENU_ID")
+  if [ -n "$SITE_DRN_ID" ]; then
+    SEED_BODY+=$(printf ',"site_drn_id":"%s"' "$SITE_DRN_ID")
+  fi
+  SEED_BODY+="}"
+  curl -fsS -X POST "${BASE_URL}/deliveroo/menu/upload" \
+    -H "Content-Type: application/json" \
+    --data "$SEED_BODY" >/dev/null
+
+  echo "==> menu upload nochange (${MENU_ID})"
+  RESP=$(curl -fsS -X POST "${BASE_URL}/deliveroo/menu/upload" \
+    -H "Content-Type: application/json" \
+    --data "$BODY")
+else
+  echo "==> menu upload (${MENU_ID})"
+  RESP=$(curl -fsS -X POST "${BASE_URL}/deliveroo/menu/upload" \
+    -H "Content-Type: application/json" \
+    --data "$BODY")
+fi
 
 echo "$RESP" | grep -q '"ok":true' || {
   echo "FAIL: menu upload did not succeed"
@@ -39,6 +56,16 @@ if [ "$SCENARIO" = "bundles" ]; then
     echo "$RESP"
     exit 1
   }
+fi
+
+if [ "$SCENARIO" = "nochange" ]; then
+  if echo "$RESP" | grep -q '"matchExistingMenu":true'; then
+    echo "OK: Deliveroo returned MATCH_EXISTING_MENU"
+  else
+    echo "WARN: sandbox returned empty body (no result yet). Portal Scenario 5 still needs"
+    echo "      matchExistingMenu:true — use a menu_id already live from Scenario 3 (mealtimes),"
+    echo "      not overwritten by bundles. Re-run nochange after menu is published."
+  fi
 fi
 
 echo "PASS: local smoke test"

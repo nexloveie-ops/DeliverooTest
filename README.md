@@ -39,7 +39,7 @@ Calls official v1 endpoint:
 Query/body parameters:
 
 - `menuId` / `menu_id` — **must match** the ID entered in the Developer Portal scenario
-- `scenario` — `mealtimes` (default), `bundles` (Scenario 4), or `default`
+- `scenario` — `mealtimes` (default), `bundles` (Scenario 4), `nochange` (Scenario 5), or `default`
 - `siteId` / `site_id` — optional (defaults to `DELIVEROO_LOCATION_ID`, e.g. `100121`)
 - `siteDrnId` / `site_drn_id` — optional scenario parameter; resolved to `site_id` when possible
 
@@ -49,6 +49,9 @@ Response includes audit block `put`: `{ method, url, brandId, siteId, menuId, si
 |------------|-------------|-------------------|
 | `mealtimes` | Menu upload with mealtimes | 2 mealtimes, 7×24h schedules |
 | `bundles` | Menu upload with bundles | 2× `BUNDLE`, `bundle-item` modifiers, price overrides, `party_size` — per [Menu API Guidelines](https://api-docs.deliveroo.com/docs/menu-api-guidelines) |
+| `nochange` | Update menu with no changes (Scenario 5) | Re-sends the **same** mealtimes payload; expect `"result": "MATCH_EXISTING_MENU"` — [Menu API Overview](https://api-docs.deliveroo.com/docs/menu-api-overview) |
+
+Top-level response field `matchExistingMenu` is `true` when Deliveroo returns `MATCH_EXISTING_MENU` (no async menu webhook for unchanged menus).
 
 ### Webhooks (`/webhooks/deliveroo`)
 
@@ -104,6 +107,9 @@ MENU_ID=123156468 SITE_DRN_ID=607326a3-ef2d-4b8b-b013-a91c52c3954f SCENARIO=meal
 
 # Scenario 4 (bundles):
 MENU_ID=your-bundle-menu-id SCENARIO=bundles npm run smoke:local
+
+# Scenario 5 (no change — seeds mealtimes then re-uploads):
+MENU_ID=123156468 SCENARIO=nochange npm run smoke:local
 ```
 
 Must see `PASS` and a `put.url` pointing at `api-sandbox.../menu/v1/brands/.../menus/...`.
@@ -117,6 +123,11 @@ Must see `PASS` and a `put.url` pointing at `api-sandbox.../menu/v1/brands/.../m
 curl -X POST "https://<cloud-run-url>/deliveroo/menu/upload" \
   -H "Content-Type: application/json" \
   -d '{"menuId":"<same as portal>","scenario":"bundles","site_drn_id":"<from scenario parameters>"}'
+
+# Scenario 5 (use menu_id already uploaded via mealtimes, e.g. after Scenario 3):
+curl -X POST "https://<cloud-run-url>/deliveroo/menu/upload" \
+  -H "Content-Type: application/json" \
+  -d '{"menuId":"123156468","scenario":"nochange","site_drn_id":"<from scenario parameters>"}'
 ```
 
 Or browser:

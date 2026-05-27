@@ -42,5 +42,8 @@ export type UploadMenuResult = {
   scenario: string;
   mealtimesCount: number;
   bundlesCount: number;
+  /** True when Deliveroo returns `"result": "MATCH_EXISTING_MENU"` (Scenario 5). */
+  matchExistingMenu: boolean;
+  result?: string;
   deliveroo: unknown;
 };

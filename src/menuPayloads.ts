@@ -30,7 +30,7 @@ const bundleItemOverride = (bundleId: string, price: number): Record<string, unk
   type: "ITEM"
 });
 
-export type MenuScenario = "default" | "mealtimes" | "bundles";
+export type MenuScenario = "default" | "mealtimes" | "bundles" | "nochange";
 
 export const buildMenuPayload = (
   menuId: string,
@@ -40,11 +40,23 @@ export const buildMenuPayload = (
   if (scenario === "bundles") {
     return buildBundlesScenarioPayload(menuId, siteId);
   }
+  if (scenario === "nochange") {
+    return buildMatchExistingMenuPayload(menuId, siteId);
+  }
   if (scenario === "mealtimes") {
     return buildMealtimesScenarioPayload(menuId, siteId);
   }
   return buildMealtimesScenarioPayload(menuId, siteId);
 };
+
+/**
+ * Scenario 5: byte-identical re-upload of the mealtimes menu already active for menuId.
+ * @see https://api-docs.deliveroo.com/docs/menu-api-overview (Unchanged menus → MATCH_EXISTING_MENU)
+ */
+export const buildMatchExistingMenuPayload = (
+  menuId: string,
+  siteId: string
+): Record<string, unknown> => buildMealtimesScenarioPayload(menuId, siteId);
 
 /** Scenario 3: multiple mealtimes, 7d/24h non-overlapping schedules */
 export const buildMealtimesScenarioPayload = (

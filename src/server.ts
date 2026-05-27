@@ -66,8 +66,15 @@ app.post("/deliveroo/menu/sync", async (_req, res) => {
   }
 });
 
-const parseScenario = (value: string | undefined): "default" | "mealtimes" | "bundles" => {
-  if (value === "bundles" || value === "mealtimes" || value === "default") {
+const parseScenario = (
+  value: string | undefined
+): "default" | "mealtimes" | "bundles" | "nochange" => {
+  if (
+    value === "bundles" ||
+    value === "mealtimes" ||
+    value === "default" ||
+    value === "nochange"
+  ) {
     return value;
   }
   return "mealtimes";
@@ -78,7 +85,7 @@ const handleMenuUpload = async (
     menuId?: string;
     siteId?: string;
     siteDrnId?: string;
-    scenario?: "default" | "mealtimes" | "bundles";
+    scenario?: "default" | "mealtimes" | "bundles" | "nochange";
     payload?: unknown;
   },
   res: express.Response
@@ -87,9 +94,12 @@ const handleMenuUpload = async (
     const put = await uploadDeliverooMenu(input);
     res.json({
       ok: true,
+      matchExistingMenu: put.matchExistingMenu,
       put,
       hint:
-        "Per Deliveroo docs: trigger scenario Start first, then call this within ~30s using API Suite sandbox credentials. PUT must match menu_id in the portal."
+        put.scenario === "nochange"
+          ? "Scenario 5: reuse the same menu_id as a prior mealtimes upload. Expect deliveroo.result MATCH_EXISTING_MENU when the active menu is unchanged."
+          : "Per Deliveroo docs: trigger scenario Start first, then call this within ~30s using API Suite sandbox credentials. PUT must match menu_id in the portal."
     });
   } catch (error) {
     const axiosDetail =
@@ -111,7 +121,7 @@ const readUploadParams = (
   menuId?: string;
   siteId?: string;
   siteDrnId?: string;
-  scenario?: "default" | "mealtimes" | "bundles";
+  scenario?: "default" | "mealtimes" | "bundles" | "nochange";
   payload?: unknown;
 } => {
   const q = (key: string): string | undefined => {

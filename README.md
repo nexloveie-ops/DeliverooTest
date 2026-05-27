@@ -32,6 +32,8 @@ Use **API Suite** sandbox credentials in Cloud Run — not “Credentials for Sc
 | GET | `/deliveroo/menu/item-unavailabilities` | Get current item unavailabilities (v2, by site) |
 | POST | `/deliveroo/menu/item-unavailabilities` | Update individual item unavailabilities (v2 POST) |
 | POST | `/deliveroo/menu/scenario8` | Scenario 8: run step `1`, `2`, or `both` (default `both`) |
+| PUT | `/deliveroo/menu/item-unavailabilities` | Replace all unavailabilities (v1 PUT; requires `menuId`) |
+| POST | `/deliveroo/menu/scenario9` | Scenario 9: GET then PUT replace-all (`step=get`, `put`, or `both`) |
 | POST | `/webhooks/deliveroo` | Order events + `menu.upload_result` |
 
 ### Menu upload (`/deliveroo/menu/upload`)
@@ -80,6 +82,21 @@ curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario8?step=2" \
 ```
 
 If stuck on **validating** with no error: confirm both POSTs used the same `menuId` as Portal, happened after **Start**, and check API Suite request logs in the Portal.
+
+**Scenario 9:** Portal **Start** creates menu + simulates tablet stock (`orange_juice` unavailable, `granola` hidden). Then **GET** → **PUT** with same payload plus `whole_milk` in `unavailable_ids`. Requires **`menuId`** (v1).
+
+```bash
+# After Portal Start:
+curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario9?step=get" \
+  -H "Content-Type: application/json" \
+  -d '{"menuId":"<portal-menu-id>","site_drn_id":"607326a3-ef2d-4b8b-b013-a91c52c3954f"}'
+
+sleep 1
+
+curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario9?step=put" \
+  -H "Content-Type: application/json" \
+  -d '{"menuId":"<portal-menu-id>","site_drn_id":"607326a3-ef2d-4b8b-b013-a91c52c3954f"}'
+```
 
 **Scenario 6:** Portal `menu_id` can stay **`123156468`**. Flow: **Start** → within **30s** upload with `scenario=webhook` → wait **1–5 min** for Deliveroo `POST` to `/webhooks/deliveroo` (must return **200**).
 

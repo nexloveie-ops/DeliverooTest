@@ -48,8 +48,13 @@ export type ItemUnavailabilityUpdate = {
   status: ItemAvailabilityStatus;
 };
 
+export type ReplaceAllUnavailabilitiesPayload = {
+  unavailable_ids: string[];
+  hidden_ids: string[];
+};
+
 export type ItemUnavailabilitiesResult = {
-  method: "POST" | "GET";
+  method: "POST" | "GET" | "PUT";
   url: string;
   brandId: string;
   siteId: string;
@@ -62,6 +67,15 @@ export type ItemUnavailabilitiesResult = {
 export type Scenario8StepResult = ItemUnavailabilitiesResult & {
   step: 1 | 2;
   itemUnavailabilities: ItemUnavailabilityUpdate[];
+};
+
+export type Scenario9GetResult = ItemUnavailabilitiesResult & {
+  parsed: ReplaceAllUnavailabilitiesPayload;
+};
+
+export type Scenario9PutResult = ItemUnavailabilitiesResult & {
+  putBody: ReplaceAllUnavailabilitiesPayload;
+  basedOnGet: ReplaceAllUnavailabilitiesPayload;
 };
 
 export type UploadMenuResult = {

@@ -5,7 +5,10 @@ import {
   fetchDeliverooMenu,
   getItemUnavailabilities,
   parseItemUnavailabilityUpdates,
+  parseReplaceAllUnavailabilities,
+  replaceAllItemUnavailabilities,
   runScenario8Unavailabilities,
+  runScenario9Unavailabilities,
   updateItemUnavailabilities,
   uploadDeliverooMenu
 } from "./deliveroo.js";
@@ -105,6 +108,27 @@ const parseScenario8Step = (
     (typeof body?.step === "number" ? String(body.step) : undefined);
   if (raw === "1" || raw === "2") return raw;
   return "both";
+};
+
+const parseScenario9Step = (
+  query: express.Request["query"],
+  body?: Record<string, unknown>
+): "get" | "put" | "both" => {
+  const raw =
+    (typeof query.step === "string" ? query.step : undefined) ??
+    (typeof body?.step === "string" ? body.step : undefined);
+  if (raw === "get" || raw === "put") return raw;
+  return "both";
+};
+
+const readReplaceAllBody = (body: Record<string, unknown>): ReturnType<typeof parseReplaceAllUnavailabilities> | undefined => {
+  if ("unavailable_ids" in body || "hidden_ids" in body) {
+    return parseReplaceAllUnavailabilities(body);
+  }
+  if (body.payload && typeof body.payload === "object") {
+    return parseReplaceAllUnavailabilities(body.payload);
+  }
+  return undefined;
 };
 
 const parseMenuUploadErrors = (
@@ -370,6 +394,33 @@ app.post("/deliveroo/menu/item-unavailabilities", async (req, res) => {
   }
 });
 
+app.put("/deliveroo/menu/item-unavailabilities", async (req, res) => {
+  const body = req.body as Record<string, unknown>;
+  const replaceBody = readReplaceAllBody(body);
+  if (!replaceBody) {
+    res.status(400).json({
+      ok: false,
+      error: "Body must include unavailable_ids and hidden_ids arrays (v1 PUT replace-all)"
+    });
+    return;
+  }
+  const siteParams = readUnavailabilitySiteParams(req.query, body);
+  if (!siteParams.menuId) {
+    res.status(400).json({ ok: false, error: "menuId is required for PUT replace-all (v1)" });
+    return;
+  }
+  try {
+    const result = await replaceAllItemUnavailabilities(replaceBody, {
+      ...siteParams,
+      apiVersion: "v1"
+    });
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    res.status(500).json({ ok: false, error: message, detail: deliverooAxiosDetail(error) });
+  }
+});
+
 app.post("/deliveroo/menu/scenario8", async (req, res) => {
   const body = req.body as Record<string, unknown>;
   const siteParams = readUnavailabilitySiteParams(req.query, body);
@@ -391,6 +442,43 @@ app.post("/deliveroo/menu/scenario8", async (req, res) => {
           : step === "1"
             ? "Scenario 8 step 1 done (v1). Wait ≥1s, then step=2 with same menuId."
             : "Scenario 8 step 2 done (v1). Final: orange_juice available, granola unavailable, whole_milk unavailable."
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    res.status(500).json({ ok: false, error: message, detail: deliverooAxiosDetail(error) });
+  }
+});
+
+app.post("/deliveroo/menu/scenario9", async (req, res) => {
+  const body = req.body as Record<string, unknown>;
+  const siteParams = readUnavailabilitySiteParams(req.query, body);
+  const step = parseScenario9Step(req.query, body);
+  if (!siteParams.menuId) {
+    res.status(400).json({
+      ok: false,
+      error: "menuId is required for Scenario 9 (same menu_id as Portal)"
+    });
+    return;
+  }
+  try {
+    const result = await runScenario9Unavailabilities({ ...siteParams, step });
+    res.json({
+      ok: true,
+      step,
+      menuId: siteParams.menuId,
+      expectedAfterPut: {
+        orange_juice: "unavailable (preserved from GET / tablet)",
+        granola: "hidden (preserved from GET / tablet)",
+        whole_milk: "unavailable (appended on PUT)"
+      },
+      getWarnings: result.getWarnings,
+      ...result,
+      hint:
+        step === "get"
+          ? "Scenario 9: confirm orange_juice unavailable + granola hidden, then POST step=put with same menuId (≥1s later)."
+          : step === "put"
+            ? "Scenario 9 PUT done: GET payload + whole_milk in unavailable_ids."
+            : "Scenario 9: ran GET then PUT. For Portal, prefer step=get then step=put after Start."
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";

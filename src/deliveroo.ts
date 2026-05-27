@@ -16,7 +16,10 @@ import type {
   ItemUnavailabilitiesResult,
   MenuUploadAttempt,
   NormalizedMenuItem,
+  ReplaceAllUnavailabilitiesPayload,
   Scenario8StepResult,
+  Scenario9GetResult,
+  Scenario9PutResult,
   UploadMenuResult
 } from "./types.js";
 
@@ -666,6 +669,138 @@ export const updateItemUnavailabilities = async (
     itemCount: itemUnavailabilities.length,
     deliveroo: response.data
   };
+};
+
+/** Scenario 9: item to append to unavailable_ids on PUT (after GET). */
+export const SCENARIO9_APPEND_UNAVAILABLE_ID = "whole_milk";
+
+const normalizeIdList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return value.filter((id): id is string => typeof id === "string" && id.length > 0);
+};
+
+export const parseReplaceAllUnavailabilities = (data: unknown): ReplaceAllUnavailabilitiesPayload => {
+  const node = toRecord(data);
+  return {
+    unavailable_ids: normalizeIdList(node.unavailable_ids),
+    hidden_ids: normalizeIdList(node.hidden_ids)
+  };
+};
+
+/** GET payload + append whole_milk to unavailable_ids; preserve hidden_ids. */
+export const buildScenario9PutPayload = (
+  current: ReplaceAllUnavailabilitiesPayload
+): ReplaceAllUnavailabilitiesPayload => {
+  const unavailable_ids = [...current.unavailable_ids];
+  if (!unavailable_ids.includes(SCENARIO9_APPEND_UNAVAILABLE_ID)) {
+    unavailable_ids.push(SCENARIO9_APPEND_UNAVAILABLE_ID);
+  }
+  return {
+    unavailable_ids,
+    hidden_ids: [...current.hidden_ids]
+  };
+};
+
+export const validateScenario9GetState = (
+  parsed: ReplaceAllUnavailabilitiesPayload
+): string[] => {
+  const warnings: string[] = [];
+  if (!parsed.unavailable_ids.includes("orange_juice")) {
+    warnings.push("GET: expected orange_juice in unavailable_ids (tablet sim — click Portal Start first).");
+  }
+  if (!parsed.hidden_ids.includes("granola")) {
+    warnings.push("GET: expected granola in hidden_ids (tablet sim — click Portal Start first).");
+  }
+  return warnings;
+};
+
+export const replaceAllItemUnavailabilities = async (
+  body: ReplaceAllUnavailabilitiesPayload,
+  options?: UnavailabilitySiteOptions
+): Promise<ItemUnavailabilitiesResult> => {
+  const token = await getAccessToken();
+  const target = await resolveUnavailabilityTarget(token, {
+    ...options,
+    apiVersion: "v1"
+  });
+  if (!target.menuId) {
+    throw new Error("menuId is required for PUT replace-all (v1)");
+  }
+  const response = await axios.put(target.url, body, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+      "Content-Type": "application/json"
+    },
+    timeout: 15000
+  });
+
+  console.log(
+    JSON.stringify({
+      msg: "deliveroo.menu.item_unavailabilities.replace",
+      method: "PUT",
+      url: target.url,
+      menuId: target.menuId,
+      unavailable_ids: body.unavailable_ids,
+      hidden_ids: body.hidden_ids
+    })
+  );
+
+  return {
+    method: "PUT",
+    url: target.url,
+    brandId: target.brandId,
+    siteId: target.siteId,
+    menuId: target.menuId,
+    apiVersion: "v1",
+    itemCount: body.unavailable_ids.length + body.hidden_ids.length,
+    deliveroo: response.data
+  };
+};
+
+export const runScenario9Unavailabilities = async (
+  options?: UnavailabilitySiteOptions & { step?: "get" | "put" | "both" }
+): Promise<{ get?: Scenario9GetResult; put?: Scenario9PutResult; getWarnings?: string[] }> => {
+  const step = options?.step ?? "both";
+  if (!options?.menuId?.trim()) {
+    throw new Error(
+      "menuId is required for Scenario 9 (Portal menu_id; v1 GET then PUT .../menus/{menuId}/item_unavailabilities/{siteId})"
+    );
+  }
+  const siteOpts: UnavailabilitySiteOptions = {
+    siteId: options.siteId,
+    siteDrnId: options.siteDrnId,
+    menuId: options.menuId,
+    apiVersion: "v1"
+  };
+  const out: { get?: Scenario9GetResult; put?: Scenario9PutResult; getWarnings?: string[] } = {};
+
+  let parsedFromGet: ReplaceAllUnavailabilitiesPayload | undefined;
+
+  if (step === "get" || step === "both") {
+    const getResult = await getItemUnavailabilities(siteOpts);
+    const parsed = parseReplaceAllUnavailabilities(getResult.deliveroo);
+    parsedFromGet = parsed;
+    out.getWarnings = validateScenario9GetState(parsed);
+    out.get = { ...getResult, parsed };
+  }
+
+  if (step === "put" || step === "both") {
+    if (step === "both") {
+      await sleep(SCENARIO8_RATE_LIMIT_MS);
+    }
+    const current =
+      parsedFromGet ??
+      parseReplaceAllUnavailabilities((await getItemUnavailabilities(siteOpts)).deliveroo);
+    if (!parsedFromGet) {
+      out.getWarnings = validateScenario9GetState(current);
+    }
+    const putBody = buildScenario9PutPayload(current);
+    const putResult = await replaceAllItemUnavailabilities(putBody, siteOpts);
+    out.put = { ...putResult, putBody, basedOnGet: current };
+  }
+
+  return out;
 };
 
 export const runScenario8Unavailabilities = async (

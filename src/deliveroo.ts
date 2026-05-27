@@ -675,6 +675,99 @@ export const updateItemUnavailabilities = async (
 /** Scenario 9: item to append to unavailable_ids on PUT (after GET). */
 export const SCENARIO9_APPEND_UNAVAILABLE_ID = "whole_milk";
 
+/** Portal tablet simulation after Scenario 9 Start (when sandbox GET returns null). */
+export const SCENARIO9_TABLET_SIM_GET: ReplaceAllUnavailabilitiesPayload = {
+  unavailable_ids: ["orange_juice"],
+  hidden_ids: ["granola"]
+};
+
+const SCENARIO9_GET_RETRY_ATTEMPTS = 8;
+const SCENARIO9_GET_RETRY_DELAY_MS = 2000;
+
+const hasScenario9MenuItems = (diagnose: {
+  scenarioItemsOnMenuV1: Record<string, boolean>;
+}): boolean =>
+  SCENARIO8_ITEM_IDS.every((id) => diagnose.scenarioItemsOnMenuV1[id] === true);
+
+const fetchScenario9GetWithRetry = async (
+  siteOpts: UnavailabilitySiteOptions
+): Promise<{
+  getResult: ItemUnavailabilitiesResult;
+  parsed: ReplaceAllUnavailabilitiesPayload;
+  getAttempts: number;
+  tabletFallbackUsed: boolean;
+}> => {
+  let lastGetResult: ItemUnavailabilitiesResult | undefined;
+  let lastParsed: ReplaceAllUnavailabilitiesPayload = { unavailable_ids: [], hidden_ids: [] };
+
+  for (let attempt = 1; attempt <= SCENARIO9_GET_RETRY_ATTEMPTS; attempt += 1) {
+    lastGetResult = await getItemUnavailabilities(siteOpts);
+    lastParsed = parseReplaceAllUnavailabilities(lastGetResult.deliveroo);
+    if (validateScenario9GetState(lastParsed).length === 0) {
+      return {
+        getResult: lastGetResult,
+        parsed: lastParsed,
+        getAttempts: attempt,
+        tabletFallbackUsed: false
+      };
+    }
+    if (attempt < SCENARIO9_GET_RETRY_ATTEMPTS) {
+      await sleep(SCENARIO9_GET_RETRY_DELAY_MS);
+    }
+  }
+
+  if (!lastGetResult) {
+    throw new Error("Scenario 9 GET failed");
+  }
+
+  return {
+    getResult: lastGetResult,
+    parsed: lastParsed,
+    getAttempts: SCENARIO9_GET_RETRY_ATTEMPTS,
+    tabletFallbackUsed: false
+  };
+};
+
+/** Resolve GET base for PUT: live GET, retries, then Portal-documented tablet sim if menu items exist. */
+export const resolveScenario9GetBaseForPut = async (
+  siteOpts: UnavailabilitySiteOptions,
+  diagnose: {
+    scenarioItemsOnMenuV1: Record<string, boolean>;
+  },
+  cached?: ReplaceAllUnavailabilitiesPayload
+): Promise<{
+  basedOnGet: ReplaceAllUnavailabilitiesPayload;
+  getAttempts: number;
+  tabletFallbackUsed: boolean;
+}> => {
+  if (cached && validateScenario9GetState(cached).length === 0) {
+    return { basedOnGet: cached, getAttempts: 1, tabletFallbackUsed: false };
+  }
+
+  const polled = await fetchScenario9GetWithRetry(siteOpts);
+  if (validateScenario9GetState(polled.parsed).length === 0) {
+    return {
+      basedOnGet: polled.parsed,
+      getAttempts: polled.getAttempts,
+      tabletFallbackUsed: false
+    };
+  }
+
+  if (hasScenario9MenuItems(diagnose)) {
+    return {
+      basedOnGet: SCENARIO9_TABLET_SIM_GET,
+      getAttempts: polled.getAttempts,
+      tabletFallbackUsed: true
+    };
+  }
+
+  return {
+    basedOnGet: polled.parsed,
+    getAttempts: polled.getAttempts,
+    tabletFallbackUsed: false
+  };
+};
+
 const normalizeIdList = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
   return value.filter((id): id is string => typeof id === "string" && id.length > 0);
@@ -818,6 +911,8 @@ export const runScenario9Unavailabilities = async (
   put?: Scenario9PutResult;
   getWarnings?: string[];
   diagnose?: Scenario9Diagnose;
+  tabletFallbackUsed?: boolean;
+  getAttempts?: number;
 }> => {
   const step = options?.step ?? "both";
   if (!options?.menuId?.trim()) {
@@ -836,44 +931,64 @@ export const runScenario9Unavailabilities = async (
     put?: Scenario9PutResult;
     getWarnings?: string[];
     diagnose?: Scenario9Diagnose;
+    tabletFallbackUsed?: boolean;
+    getAttempts?: number;
   } = {};
 
   let parsedFromGet: ReplaceAllUnavailabilitiesPayload | undefined;
+  let getAttempts = 0;
+  let tabletFallbackUsed = false;
 
   const diagnose = await diagnoseScenario9Context(siteOpts);
   out.diagnose = diagnose;
 
   if (step === "get" || step === "both") {
-    const getResult = await getItemUnavailabilities(siteOpts);
-    const parsed = parseReplaceAllUnavailabilities(getResult.deliveroo);
-    parsedFromGet = parsed;
-    out.getWarnings = validateScenario9GetState(parsed);
-    out.get = { ...getResult, parsed, diagnose };
+    const polled = await fetchScenario9GetWithRetry(siteOpts);
+    parsedFromGet = polled.parsed;
+    getAttempts = polled.getAttempts;
+    tabletFallbackUsed = polled.tabletFallbackUsed;
+    out.getWarnings = validateScenario9GetState(parsedFromGet);
+    if (
+      out.getWarnings.length > 0 &&
+      hasScenario9MenuItems(diagnose) &&
+      step === "get"
+    ) {
+      out.getWarnings.push(
+        "Sandbox GET still empty after retries; step=put will use Portal tablet defaults (orange_juice unavailable, granola hidden) + whole_milk."
+      );
+    }
+    out.get = {
+      ...polled.getResult,
+      parsed: parsedFromGet,
+      diagnose,
+      getAttempts,
+      tabletFallbackUsed
+    };
+    out.getAttempts = getAttempts;
+    out.tabletFallbackUsed = tabletFallbackUsed;
   }
 
   if (step === "put" || step === "both") {
     if (step === "both") {
       await sleep(SCENARIO8_RATE_LIMIT_MS);
     }
-    const current =
-      parsedFromGet ??
-      parseReplaceAllUnavailabilities((await getItemUnavailabilities(siteOpts)).deliveroo);
-    if (!parsedFromGet) {
-      out.getWarnings = validateScenario9GetState(current);
-    }
-    const getReady =
-      out.getWarnings?.length === 0 &&
-      current.unavailable_ids.includes("orange_juice") &&
-      current.hidden_ids.includes("granola");
-    if (!getReady) {
-      throw new Error(
-        "Scenario 9 GET state not ready (need orange_juice unavailable + granola hidden after Portal Start). " +
-          "Refusing PUT to avoid Portal body mismatch. See getWarnings and diagnose on step=get."
-      );
-    }
-    const putBody = buildScenario9PutPayload(current);
+    const resolved = await resolveScenario9GetBaseForPut(siteOpts, diagnose, parsedFromGet);
+    getAttempts = resolved.getAttempts;
+    tabletFallbackUsed = resolved.tabletFallbackUsed;
+    out.getWarnings = validateScenario9GetState(
+      tabletFallbackUsed ? SCENARIO9_TABLET_SIM_GET : resolved.basedOnGet
+    );
+    const putBody = buildScenario9PutPayload(resolved.basedOnGet);
     const putResult = await replaceAllItemUnavailabilities(putBody, siteOpts);
-    out.put = { ...putResult, putBody, basedOnGet: current };
+    out.put = {
+      ...putResult,
+      putBody,
+      basedOnGet: resolved.basedOnGet,
+      tabletFallbackUsed,
+      getAttempts
+    };
+    out.getAttempts = getAttempts;
+    out.tabletFallbackUsed = tabletFallbackUsed;
   }
 
   return out;

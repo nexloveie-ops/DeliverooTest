@@ -81,11 +81,15 @@ export type Scenario9Diagnose = {
 export type Scenario9GetResult = ItemUnavailabilitiesResult & {
   parsed: ReplaceAllUnavailabilitiesPayload;
   diagnose?: Scenario9Diagnose;
+  getAttempts?: number;
+  tabletFallbackUsed?: boolean;
 };
 
 export type Scenario9PutResult = ItemUnavailabilitiesResult & {
   putBody: ReplaceAllUnavailabilitiesPayload;
   basedOnGet: ReplaceAllUnavailabilitiesPayload;
+  tabletFallbackUsed?: boolean;
+  getAttempts?: number;
 };
 
 export type UploadMenuResult = {

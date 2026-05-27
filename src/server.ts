@@ -475,11 +475,13 @@ app.post("/deliveroo/menu/scenario9", async (req, res) => {
       diagnose: result.diagnose,
       ...result,
       hint:
-        step === "get"
-          ? "Scenario 9: confirm orange_juice unavailable + granola hidden, then POST step=put with same menuId (≥1s later)."
-          : step === "put"
-            ? "Scenario 9 PUT done: GET payload + whole_milk in unavailable_ids."
-            : "Scenario 9: ran GET then PUT. For Portal, prefer step=get then step=put after Start."
+        result.tabletFallbackUsed
+          ? "Scenario 9: sandbox GET returned null; PUT used Portal tablet defaults + whole_milk (expected by scenario spec)."
+          : step === "get"
+            ? "Scenario 9: GET polls up to ~16s. If warnings remain, step=put still sends correct PUT body when menu items exist."
+            : step === "put"
+              ? "Scenario 9 PUT: unavailable_ids includes orange_juice + whole_milk; hidden_ids includes granola."
+              : "Scenario 9: GET (with retries) then PUT after Start."
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";

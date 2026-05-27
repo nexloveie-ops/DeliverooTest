@@ -64,11 +64,10 @@ export const scenario13ItemId = (index: number): string =>
   `${SCENARIO13_ITEM_ID_PREFIX}${String(index).padStart(3, "0")}`;
 
 /**
- * Stable public JPEG (~1920px), real image/jpeg — for Scenario 13 / webhook mealtimes.
- * placehold.co triggered sandbox http_status 500 during async processing.
+ * Public JPEG 1920×1080 for mealtime hero. Must allow Deliveroo servers (no 403).
+ * Wikimedia returned 403 in webhook imageErrors; picsum allows hotlinking.
  */
-export const STABLE_MEALTIME_COVER_JPEG_URL =
-  "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6d/Good_Food_Display_-_NCI_Visuals_Online.jpg/1920px-Good_Food_Display_-_NCI_Visuals_Online.jpg";
+export const STABLE_MEALTIME_COVER_JPEG_URL = "https://picsum.photos/1920/1080";
 
 /** Scenario 13 default mealtime hero (JPEG, 1920×1080 per guidelines). */
 export const SCENARIO13_MEALTIME_COVER_URL = STABLE_MEALTIME_COVER_JPEG_URL;

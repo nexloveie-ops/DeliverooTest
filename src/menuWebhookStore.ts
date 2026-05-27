@@ -80,7 +80,7 @@ export const waitForMenuUploadWebhook = async (
     const { events } = getMenuWebhookStatus(menuId);
     const latest = events[0];
     if (latest) {
-      const ok = !requireHttp200 || latest.httpStatus === 200 || latest.httpStatus === undefined;
+      const ok = !requireHttp200 || latest.httpStatus === 200;
       if (ok) {
         return {
           received: true,

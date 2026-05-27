@@ -42,6 +42,9 @@ export type MenuScenario =
 /** Scenario 13: minimum item count for large-menu upload + webhook gate. */
 export const SCENARIO13_ITEM_COUNT = 100;
 
+/** Split across categories — avoids single huge category + image pipeline overload. */
+export const SCENARIO13_CATEGORY_COUNT = 10;
+
 export const SCENARIO13_ITEM_ID_PREFIX = "s13-item-";
 
 export const scenario13ItemId = (index: number): string =>
@@ -162,7 +165,8 @@ export const buildMenuPayload = (
 };
 
 /**
- * Scenario 13: valid menu with ≥100 items (single category + all-day mealtime).
+ * Scenario 13: valid menu with ≥100 items (10×10 categories, no per-item images).
+ * Per-item image URLs caused Deliveroo async processing http_status 500 in sandbox.
  */
 export const buildScenario13LargeMenuPayload = (
   menuId: string,
@@ -170,35 +174,48 @@ export const buildScenario13LargeMenuPayload = (
   revision: string = String(Date.now())
 ): Record<string, unknown> => {
   const revSuffix = revision.slice(-6);
-  const itemIds: string[] = [];
   const items: Record<string, unknown>[] = [];
+  const categories: Record<string, unknown>[] = [];
+  const categoryIds: string[] = [];
+  const itemsPerCategory = SCENARIO13_ITEM_COUNT / SCENARIO13_CATEGORY_COUNT;
 
-  for (let i = 1; i <= SCENARIO13_ITEM_COUNT; i += 1) {
-    const id = scenario13ItemId(i);
-    itemIds.push(id);
-    items.push(
-      itemBase({
-        id,
-        type: "ITEM",
-        name: { en: `Scenario 13 Item ${i}` },
-        description: { en: `Large menu sandbox item ${i} (rev ${revSuffix})` },
-        operational_name: `s13-item-${i}`,
-        plu: `S13${String(i).padStart(3, "0")}`,
-        price_info: { price: 500 + i, overrides: [] },
-        modifier_ids: [],
-        image: { url: ITEM_IMAGE_CACHEABLE_URL }
-      })
-    );
+  for (let c = 0; c < SCENARIO13_CATEGORY_COUNT; c += 1) {
+    const categoryId = `s13-cat-${String(c + 1).padStart(2, "0")}`;
+    categoryIds.push(categoryId);
+    const categoryItemIds: string[] = [];
+
+    for (let j = 1; j <= itemsPerCategory; j += 1) {
+      const i = c * itemsPerCategory + j;
+      const id = scenario13ItemId(i);
+      categoryItemIds.push(id);
+      items.push(
+        itemBase({
+          id,
+          type: "ITEM",
+          name: { en: `S13 Item ${i}` },
+          description: { en: `Item ${i} (rev ${revSuffix})` },
+          operational_name: `s13-${i}`,
+          plu: `S13${String(i).padStart(3, "0")}`,
+          price_info: { price: 500 + i, overrides: [] },
+          modifier_ids: []
+        })
+      );
+    }
+
+    categories.push({
+      id: categoryId,
+      name: { en: `Category ${c + 1}` },
+      item_ids: categoryItemIds
+    });
   }
 
-  const categoryId = "s13-cat-main";
   const mealtimeId = "s13-meal-all-day";
 
   return {
     name: menuId,
     site_ids: [siteId],
     menu: {
-      categories: [{ id: categoryId, name: { en: "All Items" }, item_ids: itemIds }],
+      categories,
       items,
       modifiers: [],
       mealtimes: [
@@ -206,9 +223,9 @@ export const buildScenario13LargeMenuPayload = (
           id: mealtimeId,
           name: { en: "All Day Menu" },
           description: {
-            en: `Scenario 13 large menu (${SCENARIO13_ITEM_COUNT} items, rev ${revSuffix})`
+            en: `Scenario 13 (${SCENARIO13_ITEM_COUNT} items, rev ${revSuffix})`
           },
-          category_ids: [categoryId],
+          category_ids: categoryIds,
           image: { url: WEBHOOK_MEALTIME_COVER_DAY_URL },
           schedule: [0, 1, 2, 3, 4, 5, 6].map((day) => ({
             day_of_week: day,

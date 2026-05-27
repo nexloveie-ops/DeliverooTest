@@ -161,6 +161,8 @@ curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario13?step=post" \
 
 POST sets `s13-item-001` to **unavailable** after webhook.
 
+**Scenario 13 troubleshooting:** Portal needs webhook `http_status` **200**. If you see **500** in `webhook-status`, re-upload after deploy (payload uses 10 categories, no per-item images — 100× the same image URL caused sandbox processing errors).
+
 **Scenario 6:** Portal `menu_id` can stay **`123156468`**. Flow: **Start** → within **30s** upload with `scenario=webhook` → wait **1–5 min** for Deliveroo `POST` to `/webhooks/deliveroo` (must return **200**).
 
 Troubleshooting:

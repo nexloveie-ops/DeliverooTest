@@ -32,8 +32,60 @@ const bundleItemOverride = (bundleId: string, price: number): Record<string, unk
 
 export type MenuScenario = "default" | "mealtimes" | "bundles" | "nochange" | "webhook";
 
-const revisionPriceBump = (revision: string): number =>
-  (parseInt(revision.slice(-6), 36) % 150) + 1;
+const revisionPriceBump = (revision: string): number => {
+  const numeric = Number(revision);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return (numeric % 400) + 17;
+  }
+  return (parseInt(revision.slice(-6), 36) % 400) + 17;
+};
+
+const toRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+/**
+ * Mutate a GET menu (canonical shape) so PUT differs from the live menu — Scenario 6.
+ */
+export const applyWebhookRevision = (
+  menuRoot: Record<string, unknown>,
+  revision: string
+): Record<string, unknown> => {
+  const bump = revisionPriceBump(revision);
+  const menu = toRecord(menuRoot.menu);
+  const items = Array.isArray(menu.items) ? menu.items : [];
+
+  for (const raw of items) {
+    const item = toRecord(raw);
+    if (item.type !== "ITEM") continue;
+
+    const priceInfo = toRecord(item.price_info);
+    const basePrice = typeof priceInfo.price === "number" ? priceInfo.price : 1000;
+    item.price_info = { ...priceInfo, price: basePrice + bump };
+
+    const name = toRecord(item.name);
+    if (typeof name.en === "string" && !name.en.includes(revision.slice(-6))) {
+      name.en = `${name.en} ·${revision.slice(-6)}`;
+    }
+    const description = toRecord(item.description);
+    description.en = `Sandbox item updated at ${revision}`;
+
+    item.external_data = `webhook-rev-${revision}`;
+  }
+
+  const mealtimes = Array.isArray(menu.mealtimes) ? menu.mealtimes : [];
+  for (const raw of mealtimes) {
+    const mealtime = toRecord(raw);
+    const description = toRecord(mealtime.description);
+    description.en = `Menu sync ${revision}`;
+    const image = toRecord(mealtime.image);
+    if (typeof image.url === "string") {
+      const baseUrl = image.url.split("?")[0];
+      image.url = `${baseUrl}?webhook_rev=${revision}`;
+    }
+  }
+
+  return { ...menuRoot, menu };
+};
 
 export const buildMenuPayload = (
   menuId: string,
@@ -65,6 +117,28 @@ export const buildWebhookScenarioPayload = (
   siteId: string,
   revision: string = String(Date.now())
 ): Record<string, unknown> => buildMealtimesScenarioPayload(menuId, siteId, revision);
+
+/** Build PUT body for Scenario 6 from live menu when possible. */
+export const buildWebhookUploadBody = (
+  menuId: string,
+  siteId: string,
+  revision: string,
+  currentMenuJson?: string
+): string => {
+  if (currentMenuJson) {
+    try {
+      const current = JSON.parse(currentMenuJson) as Record<string, unknown>;
+      const mutated = applyWebhookRevision(current, revision);
+      const mutatedJson = JSON.stringify(mutated);
+      if (mutatedJson !== currentMenuJson) {
+        return mutatedJson;
+      }
+    } catch {
+      // fall through to template
+    }
+  }
+  return JSON.stringify(buildWebhookScenarioPayload(menuId, siteId, revision));
+};
 
 /**
  * Scenario 5: must re-upload the same JSON as Scenario 3 (mealtimes), byte-for-byte.

@@ -3,7 +3,7 @@ import axios from "axios";
 import { config } from "./config.js";
 import {
   buildMenuPayload,
-  buildWebhookScenarioPayload,
+  buildWebhookUploadBody,
   countBundlesInPayload,
   serializeNoChangeMenuBody,
   type MenuScenario
@@ -383,7 +383,18 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
     deliveroo = await putMenuJson(url, token, resolved.bodyJson);
   } else if (scenario === "webhook" && !options?.payload) {
     const revision = menuRevision ?? String(Date.now());
-    const bodyJson = JSON.stringify(buildWebhookScenarioPayload(menuId, siteId, revision));
+    let currentMenuJson: string | undefined;
+    try {
+      currentMenuJson = await fetchMenuForReplay(brandId, menuId, token);
+      bodySource = "get";
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        bodySource = "template";
+      } else {
+        throw error;
+      }
+    }
+    const bodyJson = buildWebhookUploadBody(menuId, siteId, revision, currentMenuJson);
     menuBody = JSON.parse(bodyJson) as Record<string, unknown>;
     deliveroo = await putMenuJson(url, token, bodyJson);
   } else {

@@ -20,6 +20,7 @@ It does **not** include inventory deduction, BOM rules, or reporting.
 - `POST /deliveroo/menu/upload`  
   Uploads a test menu to Deliveroo (`menu/v1`) using OAuth client credentials.  
   You can pass `menuId` / `menu_id`, and `siteId` / `site_id` or `siteDrnId` / `site_drn_id` in JSON body to match Deliveroo scenario input.
+  If `siteDrnId` cannot be resolved by Sites API, the service falls back to configured/default site.
 
 - `POST /webhooks/deliveroo`  
   Receives Deliveroo webhook, validates signature (if configured), performs basic idempotency check, normalizes event, and optionally forwards.

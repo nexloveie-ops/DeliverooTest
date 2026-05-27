@@ -151,18 +151,32 @@ const resolveSiteContext = async (
 
   const matched = list.find((site) => {
     const node = toRecord(site);
-    const drn = asString(node.drn_id) ?? asString(node.site_drn_id);
-    const id = asString(node.id) ?? asString(node.site_id);
+    const drn =
+      asString(node.drn_id) ??
+      asString(node.site_drn_id) ??
+      asString(node.drn) ??
+      asString(node.restaurant_drn) ??
+      asString(node.restaurant_location_drn);
+    const id =
+      asString(node.id) ??
+      asString(node.site_id) ??
+      asString(node.restaurant_location_id) ??
+      asString(node.location_id);
     return drn === options.siteDrnId || id === options.siteDrnId;
   });
 
   const matchedNode = toRecord(matched);
-  const resolvedSiteId = asString(matchedNode.id) ?? asString(matchedNode.site_id);
-  if (!resolvedSiteId) {
-    throw new Error(`Could not resolve siteId from siteDrnId=${options.siteDrnId}`);
-  }
+  const resolvedSiteId =
+    asString(matchedNode.id) ??
+    asString(matchedNode.site_id) ??
+    asString(matchedNode.restaurant_location_id) ??
+    asString(matchedNode.location_id);
 
-  return { siteId: resolvedSiteId, brandId };
+  // If scenario DRN cannot be resolved from the sites listing, continue with configured/default site.
+  // This prevents hard-fail before Upload Menu call and still allows scenario-aligned calls when mapping exists.
+  const fallbackSiteId = initialSiteId;
+
+  return { siteId: resolvedSiteId ?? fallbackSiteId, brandId };
 };
 
 type UploadMenuOptions = {

@@ -49,9 +49,9 @@ Response includes audit block `put`: `{ method, url, brandId, siteId, menuId, si
 |------------|-------------|-------------------|
 | `mealtimes` | Menu upload with mealtimes | 2 mealtimes, 7×24h schedules |
 | `bundles` | Menu upload with bundles | 2× `BUNDLE`, `bundle-item` modifiers, price overrides, `party_size` — per [Menu API Guidelines](https://api-docs.deliveroo.com/docs/menu-api-guidelines) |
-| `nochange` | Update menu with no changes (Scenario 5) | Re-sends the **same** mealtimes payload; expect `"result": "MATCH_EXISTING_MENU"` — [Menu API Overview](https://api-docs.deliveroo.com/docs/menu-api-overview) |
+| `nochange` | Update menu with no changes (Scenario 5) | Frozen minimal menu; use **`"double": true`** to send two byte-identical PUTs in one call — [Menu API Overview](https://api-docs.deliveroo.com/docs/menu-api-overview) |
 
-Top-level response field `matchExistingMenu` is `true` when Deliveroo returns `MATCH_EXISTING_MENU` (no async menu webhook for unchanged menus).
+Top-level `matchExistingMenu` reflects the **second** PUT when `double: true`. Portal expects upload 2 to match upload 1 in the same scenario run (not an older bundles/mealtimes menu).
 
 ### Webhooks (`/webhooks/deliveroo`)
 
@@ -124,10 +124,10 @@ curl -X POST "https://<cloud-run-url>/deliveroo/menu/upload" \
   -H "Content-Type: application/json" \
   -d '{"menuId":"<same as portal>","scenario":"bundles","site_drn_id":"<from scenario parameters>"}'
 
-# Scenario 5 (use menu_id already uploaded via mealtimes, e.g. after Scenario 3):
+# Scenario 5 (Start → within ~30s, two identical PUTs in one request):
 curl -X POST "https://<cloud-run-url>/deliveroo/menu/upload" \
   -H "Content-Type: application/json" \
-  -d '{"menuId":"123156468","scenario":"nochange","site_drn_id":"<from scenario parameters>"}'
+  -d '{"menuId":"123156468","scenario":"nochange","double":true,"site_drn_id":"<from scenario parameters>"}'
 ```
 
 Or browser:

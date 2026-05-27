@@ -17,20 +17,15 @@ fi
 BODY+="}"
 
 if [ "$SCENARIO" = "nochange" ]; then
-  echo "==> seed menu (mealtimes) for MATCH_EXISTING_MENU"
-  SEED_BODY=$(printf '{"menuId":"%s","scenario":"mealtimes"' "$MENU_ID")
+  echo "==> menu upload nochange double (${MENU_ID})"
+  DOUBLE_BODY=$(printf '{"menuId":"%s","scenario":"nochange","double":true' "$MENU_ID")
   if [ -n "$SITE_DRN_ID" ]; then
-    SEED_BODY+=$(printf ',"site_drn_id":"%s"' "$SITE_DRN_ID")
+    DOUBLE_BODY+=$(printf ',"site_drn_id":"%s"' "$SITE_DRN_ID")
   fi
-  SEED_BODY+="}"
-  curl -fsS -X POST "${BASE_URL}/deliveroo/menu/upload" \
-    -H "Content-Type: application/json" \
-    --data "$SEED_BODY" >/dev/null
-
-  echo "==> menu upload nochange (${MENU_ID})"
+  DOUBLE_BODY+="}"
   RESP=$(curl -fsS -X POST "${BASE_URL}/deliveroo/menu/upload" \
     -H "Content-Type: application/json" \
-    --data "$BODY")
+    --data "$DOUBLE_BODY")
 else
   echo "==> menu upload (${MENU_ID})"
   RESP=$(curl -fsS -X POST "${BASE_URL}/deliveroo/menu/upload" \
@@ -59,12 +54,15 @@ if [ "$SCENARIO" = "bundles" ]; then
 fi
 
 if [ "$SCENARIO" = "nochange" ]; then
+  echo "$RESP" | grep -q '"doubleUpload":true' || {
+    echo "FAIL: nochange smoke expects doubleUpload:true"
+    echo "$RESP"
+    exit 1
+  }
   if echo "$RESP" | grep -q '"matchExistingMenu":true'; then
-    echo "OK: Deliveroo returned MATCH_EXISTING_MENU"
+    echo "OK: second PUT returned MATCH_EXISTING_MENU"
   else
-    echo "WARN: sandbox returned empty body (no result yet). Portal Scenario 5 still needs"
-    echo "      matchExistingMenu:true — use a menu_id already live from Scenario 3 (mealtimes),"
-    echo "      not overwritten by bundles. Re-run nochange after menu is published."
+    echo "WARN: second PUT did not report MATCH_EXISTING_MENU yet (sandbox may return empty body)."
   fi
 fi
 

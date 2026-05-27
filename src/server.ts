@@ -80,6 +80,11 @@ const parseScenario = (
   return "mealtimes";
 };
 
+const parseDoubleUpload = (body?: Record<string, unknown>): boolean => {
+  if (body?.double === true || body?.doubleUpload === true) return true;
+  return false;
+};
+
 const handleMenuUpload = async (
   input: {
     menuId?: string;
@@ -87,6 +92,7 @@ const handleMenuUpload = async (
     siteDrnId?: string;
     scenario?: "default" | "mealtimes" | "bundles" | "nochange";
     payload?: unknown;
+    doubleUpload?: boolean;
   },
   res: express.Response
 ): Promise<void> => {
@@ -98,7 +104,9 @@ const handleMenuUpload = async (
       put,
       hint:
         put.scenario === "nochange"
-          ? "Scenario 5: reuse the same menu_id as a prior mealtimes upload. Expect deliveroo.result MATCH_EXISTING_MENU when the active menu is unchanged."
+          ? put.doubleUpload
+            ? "Scenario 5: two identical PUTs sent. Portal expects the second to match the first (MATCH_EXISTING_MENU)."
+            : "Scenario 5: call with \"double\":true after Start, or upload twice with scenario=nochange and the same menu_id."
           : "Per Deliveroo docs: trigger scenario Start first, then call this within ~30s using API Suite sandbox credentials. PUT must match menu_id in the portal."
     });
   } catch (error) {
@@ -123,6 +131,7 @@ const readUploadParams = (
   siteDrnId?: string;
   scenario?: "default" | "mealtimes" | "bundles" | "nochange";
   payload?: unknown;
+  doubleUpload?: boolean;
 } => {
   const q = (key: string): string | undefined => {
     const value = query[key];
@@ -149,8 +158,12 @@ const readUploadParams = (
   const scenario = parseScenario(scenarioRaw);
   const payload =
     body && typeof body === "object" && "payload" in body ? body.payload : menuId ? undefined : body;
+  const doubleUpload =
+    q("double") === "true" ||
+    q("doubleUpload") === "true" ||
+    parseDoubleUpload(body);
 
-  return { menuId, siteId, siteDrnId, scenario, payload };
+  return { menuId, siteId, siteDrnId, scenario, payload, doubleUpload };
 };
 
 app.get("/deliveroo/menu/upload", async (req, res) => {

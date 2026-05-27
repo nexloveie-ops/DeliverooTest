@@ -32,6 +32,13 @@ export type NormalizedMenuEvent = {
   payload: unknown;
 };
 
+export type MenuUploadAttempt = {
+  uploadIndex: number;
+  matchExistingMenu: boolean;
+  result?: string;
+  deliveroo: unknown;
+};
+
 export type UploadMenuResult = {
   method: "PUT";
   url: string;
@@ -46,4 +53,8 @@ export type UploadMenuResult = {
   matchExistingMenu: boolean;
   result?: string;
   deliveroo: unknown;
+  /** Present when `doubleUpload` runs two byte-identical PUTs for Scenario 5. */
+  doubleUpload?: boolean;
+  firstPut?: MenuUploadAttempt;
+  secondPut?: MenuUploadAttempt;
 };

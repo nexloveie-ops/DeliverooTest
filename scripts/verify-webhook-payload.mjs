@@ -69,7 +69,7 @@ if (urls.some((u) => u.includes("unsplash.com"))) {
 }
 ok("no unsplash URLs in mutated payload");
 
-const allowedHosts = ["upload.wikimedia.org", "picsum.photos"];
+const allowedHosts = ["placehold.co", "picsum.photos", "httpbin.org"];
 for (const url of urls) {
   const host = new URL(url.split("?")[0]).hostname;
   if (!allowedHosts.includes(host)) {
@@ -77,20 +77,22 @@ for (const url of urls) {
   }
 }
 
-const checkHttp = (url) => {
+const checkHttp = (url, userAgent = "DeliverooMenuTest/1.0") => {
   const code = execSync(
-    `curl -sS -o /dev/null -w "%{http_code}" -L -A "DeliverooMenuTest/1.0" "${url.split("?")[0]}"`,
+    `curl -sS -o /dev/null -w "%{http_code}" -L -A "${userAgent}" "${url.split("?")[0]}"`,
     { encoding: "utf8" }
   ).trim();
   if (code !== "200") {
-    fail(`image URL not reachable (${code}): ${url}`);
+    fail(`image URL not reachable (${code}) with UA ${userAgent}: ${url}`);
   }
 };
 
-checkHttp(WEBHOOK_MEALTIME_COVER_DAY_URL);
-checkHttp(WEBHOOK_MEALTIME_COVER_EVENING_URL);
-for (const url of urls) {
-  checkHttp(url);
+for (const ua of ["DeliverooMenuTest/1.0", "Go-http-client/1.1"]) {
+  checkHttp(WEBHOOK_MEALTIME_COVER_DAY_URL, ua);
+  checkHttp(WEBHOOK_MEALTIME_COVER_EVENING_URL, ua);
+  for (const url of urls) {
+    checkHttp(url, ua);
+  }
 }
 ok("all mealtime cover URLs return HTTP 200");
 

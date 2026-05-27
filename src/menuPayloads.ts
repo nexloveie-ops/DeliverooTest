@@ -113,7 +113,7 @@ export const applyWebhookRevision = (
     const description = toRecord(mealtime.description);
     description.en = `Menu sync ${revision}`;
     const image = toRecord(mealtime.image);
-    image.url = mealtimeCoverForIndex(index, revision);
+    image.url = mealtimeCoverForIndex(index);
   });
 
   return { ...menuRoot, menu };
@@ -142,16 +142,13 @@ export const buildMenuPayload = (
 
 /** Stable JPEG covers (curl-verified HTTP 200). Avoid Unsplash + Wikimedia /thumb/ paths. */
 export const WEBHOOK_MEALTIME_COVER_DAY_URL =
-  "https://upload.wikimedia.org/wikipedia/commons/6/6d/Good_Food_Display_-_NCI_Visuals_Online.jpg";
+  "https://placehold.co/800x600.jpg";
 
 export const WEBHOOK_MEALTIME_COVER_EVENING_URL =
   "https://picsum.photos/seed/deliveroo-evening-menu/800/600.jpg";
 
-const mealtimeCoverForIndex = (index: number, revision: string): string => {
-  const base =
-    index % 2 === 0 ? WEBHOOK_MEALTIME_COVER_DAY_URL : WEBHOOK_MEALTIME_COVER_EVENING_URL;
-  return `${base.split("?")[0]}?webhook_rev=${revision}`;
-};
+const mealtimeCoverForIndex = (index: number): string =>
+  index % 2 === 0 ? WEBHOOK_MEALTIME_COVER_DAY_URL : WEBHOOK_MEALTIME_COVER_EVENING_URL;
 
 /**
  * Scenario 6 minimal menu — matches Portal checklist with no modifiers/bundles.

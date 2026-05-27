@@ -205,6 +205,21 @@ app.post("/deliveroo/menu/upload", async (req, res) => {
   await handleMenuUpload(readUploadParams(req.query, body), res);
 });
 
+/** Portal / browser URL checks use GET; Deliveroo callbacks are POST only. */
+const webhookProbe = (_req: express.Request, res: express.Response): void => {
+  res.status(200).json({
+    ok: true,
+    endpoint: "/webhooks/deliveroo",
+    methods: ["POST"],
+    note: "Configure Menu Events in Developer Portal to POST here. GET only confirms the URL is reachable."
+  });
+};
+
+app.get("/webhooks/deliveroo", webhookProbe);
+app.head("/webhooks/deliveroo", (_req, res) => {
+  res.status(200).end();
+});
+
 app.post("/webhooks/deliveroo", async (req, res) => {
   try {
     const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from("");

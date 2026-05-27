@@ -64,6 +64,8 @@ Configure in Developer Portal:
 - **Order events** → same URL
 - **Menu events** → same URL
 
+`GET /webhooks/deliveroo` returns `200` (URL reachability only). **Deliveroo sends `POST`** with `menu.upload_result` after async menu processing — opening the URL in a browser is not a webhook delivery.
+
 HMAC verification ([Securing Webhooks](https://api-docs.deliveroo.com/docs/securing-webhooks)):
 
 - Headers: `X-Deliveroo-Sequence-Guid`, `X-Deliveroo-Hmac-Sha256`

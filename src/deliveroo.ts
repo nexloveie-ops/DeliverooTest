@@ -19,40 +19,186 @@ const asNumber = (value: unknown): number | undefined => {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 };
 
-const detectMenuItems = (payload: unknown): unknown[] => {
-  if (Array.isArray(payload)) return payload;
-  const top = toRecord(payload);
-  const candidates = ["items", "menu_items", "products", "data"];
-  for (const key of candidates) {
-    const value = top[key];
-    if (Array.isArray(value)) return value;
+type OAuthTokenResponse = {
+  access_token: string;
+  expires_in: number;
+};
+
+type SiteBrandResponse = {
+  id: string;
+  brand_id?: string[] | string;
+};
+
+const accessTokenCache: { token: string; expiresAtMs: number } = {
+  token: "",
+  expiresAtMs: 0
+};
+
+const brandIdCache: { value: string } = {
+  value: ""
+};
+
+const getAccessToken = async (): Promise<string> => {
+  if (Date.now() < accessTokenCache.expiresAtMs && accessTokenCache.token) {
+    return accessTokenCache.token;
   }
-  return [];
+  if (!config.deliverooClientId || !config.deliverooClientSecret) {
+    throw new Error("DELIVEROO_CLIENT_ID or DELIVEROO_CLIENT_SECRET is missing");
+  }
+
+  const tokenUrl = `${config.deliverooAuthBaseUrl}/oauth2/token`;
+  const body = new URLSearchParams({
+    client_id: config.deliverooClientId,
+    client_secret: config.deliverooClientSecret,
+    grant_type: "client_credentials"
+  });
+
+  const response = await axios.post<OAuthTokenResponse>(tokenUrl, body.toString(), {
+    headers: { "Content-Type": "application/x-www-form-urlencoded; charset=utf-8" },
+    timeout: 10000
+  });
+
+  const token = response.data.access_token;
+  const expiresIn = response.data.expires_in ?? 300;
+  accessTokenCache.token = token;
+  accessTokenCache.expiresAtMs = Date.now() + Math.max(30, expiresIn - 30) * 1000;
+  return token;
+};
+
+const resolveSiteId = (): string => {
+  const siteId = config.deliverooSiteId || config.deliverooLocationId;
+  if (!siteId) {
+    throw new Error("DELIVEROO_SITE_ID (or DELIVEROO_LOCATION_ID) is missing");
+  }
+  return siteId;
+};
+
+const resolveBrandId = async (token: string, siteId: string): Promise<string> => {
+  if (config.deliverooBrandId) return config.deliverooBrandId;
+  if (brandIdCache.value) return brandIdCache.value;
+
+  const url = `${config.deliverooBaseUrl}/site/v1/restaurant_locations/${siteId}`;
+  const response = await axios.get<SiteBrandResponse>(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json"
+    },
+    timeout: 10000
+  });
+
+  const rawBrand = response.data.brand_id;
+  const brandId = Array.isArray(rawBrand) ? rawBrand[0] : rawBrand;
+  if (!brandId || typeof brandId !== "string") {
+    throw new Error("Could not resolve brand_id from restaurant location");
+  }
+
+  brandIdCache.value = brandId;
+  return brandId;
+};
+
+const resolveMenuId = (siteId: string): string => {
+  return config.deliverooMenuId || `test-menu-${siteId}`;
+};
+
+export const uploadDeliverooMenu = async (payload?: unknown): Promise<unknown> => {
+  const token = await getAccessToken();
+  const siteId = resolveSiteId();
+  const brandId = await resolveBrandId(token, siteId);
+  const menuId = resolveMenuId(siteId);
+
+  const defaultPayload = {
+    name: menuId,
+    site_ids: [siteId],
+    menu: {
+      categories: [
+        {
+          id: "cat-main",
+          name: { en: "Main" },
+          item_ids: ["item-burger"]
+        }
+      ],
+      items: [
+        {
+          id: "item-burger",
+          type: "ITEM",
+          name: { en: "Test Burger" },
+          description: { en: "Sandbox test item" },
+          price_info: { price: 1000 },
+          tax_rate: "13.5",
+          plu: "TB001",
+          modifier_ids: [],
+          diets: [],
+          allergies: [],
+          classifications: [],
+          contains_alcohol: false,
+          highlights: [],
+          external_data: "",
+          barcodes: [],
+          image: {},
+          nutritional_info: {},
+          is_eligible_as_replacement: true,
+          is_eligible_for_substitution: true,
+          is_meal_card_not_eligible: false,
+          max_quantity: null,
+          operational_name: "test-burger"
+        }
+      ],
+      modifiers: [],
+      mealtimes: [
+        {
+          id: "all-day",
+          name: { en: "All Day" },
+          description: { en: "All day menu" },
+          category_ids: ["cat-main"],
+          image: { url: "https://images.unsplash.com/photo-1550547660-d9450f859349" },
+          schedule: [
+            { day_of_week: 0, time_periods: [{ start: "00:00:00", end: "23:59:00" }] },
+            { day_of_week: 1, time_periods: [{ start: "00:00:00", end: "23:59:00" }] },
+            { day_of_week: 2, time_periods: [{ start: "00:00:00", end: "23:59:00" }] },
+            { day_of_week: 3, time_periods: [{ start: "00:00:00", end: "23:59:00" }] },
+            { day_of_week: 4, time_periods: [{ start: "00:00:00", end: "23:59:00" }] },
+            { day_of_week: 5, time_periods: [{ start: "00:00:00", end: "23:59:00" }] },
+            { day_of_week: 6, time_periods: [{ start: "00:00:00", end: "23:59:00" }] }
+          ]
+        }
+      ]
+    }
+  };
+
+  const url = `${config.deliverooBaseUrl}/menu/v1/brands/${brandId}/menus/${menuId}`;
+  const response = await axios.put(url, payload ?? defaultPayload, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+      "Content-Type": "application/json"
+    },
+    timeout: 20000
+  });
+  return response.data;
 };
 
 export const fetchDeliverooMenu = async (): Promise<NormalizedMenuItem[]> => {
-  if (!config.deliverooApiToken) {
-    throw new Error("DELIVEROO_API_TOKEN is missing");
-  }
-  if (!config.deliverooSiteId) {
-    throw new Error("DELIVEROO_SITE_ID is missing");
-  }
+  const token = await getAccessToken();
+  const siteId = resolveSiteId();
+  const brandId = await resolveBrandId(token, siteId);
 
-  const url = `${config.deliverooBaseUrl}/menu/v1/sites/${config.deliverooSiteId}`;
+  const url = `${config.deliverooBaseUrl}/menu/v2/brands/${brandId}/sites/${siteId}/menu`;
   const response = await axios.get(url, {
     headers: {
-      Authorization: `Bearer ${config.deliverooApiToken}`,
+      Authorization: `Bearer ${token}`,
       Accept: "application/json"
     },
     timeout: 15000
   });
 
-  const rawItems = detectMenuItems(response.data);
+  const root = toRecord(response.data);
+  const menu = toRecord(root.menu);
+  const rawItems = Array.isArray(menu.items) ? menu.items : [];
   return rawItems.map((raw): NormalizedMenuItem => {
     const node = toRecord(raw);
     return {
       channel: "deliveroo",
-      siteId: config.deliverooSiteId,
+      siteId,
       itemId: asString(node.id) ?? asString(node.item_id) ?? "unknown",
       name: asString(node.name) ?? "unknown",
       description: asString(node.description),

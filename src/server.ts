@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import express from "express";
 import { config } from "./config.js";
-import { fetchDeliverooMenu } from "./deliveroo.js";
+import { fetchDeliverooMenu, uploadDeliverooMenu } from "./deliveroo.js";
 import { forwardToOwnSystem } from "./forwarder.js";
 import type { NormalizedOrderEvent } from "./types.js";
 
@@ -52,6 +52,16 @@ app.post("/deliveroo/menu/sync", async (_req, res) => {
     const items = await fetchDeliverooMenu();
     await forwardToOwnSystem({ items, syncedAt: new Date().toISOString() }, "menu");
     res.json({ ok: true, count: items.length, items });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    res.status(500).json({ ok: false, error: message });
+  }
+});
+
+app.post("/deliveroo/menu/upload", async (req, res) => {
+  try {
+    const result = await uploadDeliverooMenu(req.body);
+    res.json({ ok: true, result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
     res.status(500).json({ ok: false, error: message });

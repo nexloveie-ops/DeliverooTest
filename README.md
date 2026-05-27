@@ -17,6 +17,9 @@ It does **not** include inventory deduction, BOM rules, or reporting.
 - `POST /deliveroo/menu/sync`  
   Fetches menu from Deliveroo API, normalizes records, returns JSON, and optionally forwards data.
 
+- `POST /deliveroo/menu/upload`  
+  Uploads a test menu to Deliveroo (`menu/v1`) using OAuth client credentials.
+
 - `POST /webhooks/deliveroo`  
   Receives Deliveroo webhook, validates signature (if configured), performs basic idempotency check, normalizes event, and optionally forwards.
 
@@ -26,9 +29,14 @@ Copy `.env.example` to `.env` and fill values:
 
 - `PORT`
 - `DELIVEROO_BASE_URL`
-- `DELIVEROO_API_TOKEN`
-- `DELIVEROO_SITE_ID`
-- `DELIVEROO_WEBHOOK_SECRET` (optional but recommended)
+- `DELIVEROO_AUTH_BASE_URL`
+- `DELIVEROO_CLIENT_ID`
+- `DELIVEROO_CLIENT_SECRET`
+- `DELIVEROO_LOCATION_ID` (defaults to `100121`)
+- `DELIVEROO_BRAND_ID` (optional override; auto-read from location when empty)
+- `DELIVEROO_SITE_ID` (optional override; defaults to location id when empty)
+- `DELIVEROO_MENU_ID` (optional override; auto-generated when empty)
+- `DELIVEROO_WEBHOOK_SECRET` (optional; leave empty if Deliveroo did not provide one)
 - `FORWARD_TARGET_URL` (optional)
 - `FORWARD_AUTH_TOKEN` (optional)
 

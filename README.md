@@ -29,6 +29,9 @@ Use **API Suite** sandbox credentials in Cloud Run — not “Credentials for Sc
 | POST | `/deliveroo/menu/sync` | `GET` menu v2 by site, normalize items |
 | GET/POST | `/deliveroo/menu/upload` | `PUT` menu v1 (scenario helper) |
 | GET | `/deliveroo/menu/webhook-status` | Poll received `menu.upload_result` for a `menuId` |
+| GET | `/deliveroo/menu/item-unavailabilities` | Get current item unavailabilities (v2, by site) |
+| POST | `/deliveroo/menu/item-unavailabilities` | Update individual item unavailabilities (v2 POST) |
+| POST | `/deliveroo/menu/scenario8` | Scenario 8: run step `1`, `2`, or `both` (default `both`) |
 | POST | `/webhooks/deliveroo` | Order events + `menu.upload_result` |
 
 ### Menu upload (`/deliveroo/menu/upload`)
@@ -55,6 +58,26 @@ Response includes audit block `put`: `{ method, url, brandId, siteId, menuId, si
 | `imagecache` | Image caching headers (Scenario 7) | Upload includes ITEM image URL (`https://placehold.co/640x480.jpg`) where `HEAD` returns `ETag`; suitable for Deliveroo cache-header validation |
 
 Complete **Scenario 3** on the same `menu_id` first so GET returns a menu. `matchExistingMenu` on the second PUT should be `true`.
+
+**Scenario 8:** Portal **Start** auto-creates a menu with `orange_juice`, `granola`, `whole_milk`. No menu upload needed.
+
+1. **Step 1** — mark `orange_juice` and `granola` unavailable  
+2. **Step 2** — mark `orange_juice` available and `whole_milk` unavailable  
+
+Final state: `orange_juice` available, `granola` unavailable, `whole_milk` unavailable.
+
+```bash
+# After Portal Start (within scenario window):
+curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario8?step=1" \
+  -H "Content-Type: application/json" \
+  -d '{"site_drn_id":"607326a3-ef2d-4b8b-b013-a91c52c3954f"}'
+
+curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario8?step=2" \
+  -H "Content-Type: application/json" \
+  -d '{"site_drn_id":"607326a3-ef2d-4b8b-b013-a91c52c3954f"}'
+```
+
+Or both steps in one call: `POST /deliveroo/menu/scenario8` (omit `step` or `step=both`).
 
 **Scenario 6:** Portal `menu_id` can stay **`123156468`**. Flow: **Start** → within **30s** upload with `scenario=webhook` → wait **1–5 min** for Deliveroo `POST` to `/webhooks/deliveroo` (must return **200**).
 

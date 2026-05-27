@@ -41,6 +41,27 @@ export type MenuUploadAttempt = {
   deliveroo: unknown;
 };
 
+export type ItemAvailabilityStatus = "available" | "unavailable" | "hidden";
+
+export type ItemUnavailabilityUpdate = {
+  item_id: string;
+  status: ItemAvailabilityStatus;
+};
+
+export type ItemUnavailabilitiesResult = {
+  method: "POST" | "GET";
+  url: string;
+  brandId: string;
+  siteId: string;
+  itemCount?: number;
+  deliveroo: unknown;
+};
+
+export type Scenario8StepResult = ItemUnavailabilitiesResult & {
+  step: 1 | 2;
+  itemUnavailabilities: ItemUnavailabilityUpdate[];
+};
+
 export type UploadMenuResult = {
   method: "PUT";
   url: string;

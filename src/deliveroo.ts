@@ -10,7 +10,15 @@ import {
   type MenuScenario,
   type WebhookUploadBodyStrategy
 } from "./menuPayloads.js";
-import type { MenuUploadAttempt, NormalizedMenuItem, UploadMenuResult } from "./types.js";
+import type {
+  ItemAvailabilityStatus,
+  ItemUnavailabilityUpdate,
+  ItemUnavailabilitiesResult,
+  MenuUploadAttempt,
+  NormalizedMenuItem,
+  Scenario8StepResult,
+  UploadMenuResult
+} from "./types.js";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -517,6 +525,132 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
   );
 
   return result;
+};
+
+/** Scenario 8 portal menu item IDs (auto-created when the scenario starts). */
+export const SCENARIO8_ITEM_IDS = ["orange_juice", "granola", "whole_milk"] as const;
+
+export const SCENARIO8_STEP1: ItemUnavailabilityUpdate[] = [
+  { item_id: "orange_juice", status: "unavailable" },
+  { item_id: "granola", status: "unavailable" }
+];
+
+export const SCENARIO8_STEP2: ItemUnavailabilityUpdate[] = [
+  { item_id: "orange_juice", status: "available" },
+  { item_id: "whole_milk", status: "unavailable" }
+];
+
+const isItemAvailabilityStatus = (value: unknown): value is ItemAvailabilityStatus =>
+  value === "available" || value === "unavailable" || value === "hidden";
+
+export const parseItemUnavailabilityUpdates = (
+  value: unknown
+): ItemUnavailabilityUpdate[] | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  const updates: ItemUnavailabilityUpdate[] = [];
+  for (const raw of value) {
+    const node = toRecord(raw);
+    const itemId = asString(node.item_id);
+    const status = node.status;
+    if (!itemId || !isItemAvailabilityStatus(status)) return undefined;
+    updates.push({ item_id: itemId, status });
+  }
+  return updates.length > 0 ? updates : undefined;
+};
+
+type UnavailabilitySiteOptions = {
+  siteId?: string;
+  siteDrnId?: string;
+};
+
+const itemUnavailabilitiesV2Url = (brandId: string, siteId: string): string =>
+  `${config.deliverooBaseUrl}/menu/v2/brands/${brandId}/sites/${siteId}/menu/item_unavailabilities`;
+
+export const getItemUnavailabilities = async (
+  options?: UnavailabilitySiteOptions
+): Promise<ItemUnavailabilitiesResult> => {
+  const token = await getAccessToken();
+  const { siteId, brandId } = await resolveSiteContext(token, options);
+  const url = itemUnavailabilitiesV2Url(brandId, siteId);
+  const response = await axios.get(url, {
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+    timeout: 15000
+  });
+  return {
+    method: "GET",
+    url,
+    brandId,
+    siteId,
+    deliveroo: response.data
+  };
+};
+
+export const updateItemUnavailabilities = async (
+  itemUnavailabilities: ItemUnavailabilityUpdate[],
+  options?: UnavailabilitySiteOptions
+): Promise<ItemUnavailabilitiesResult> => {
+  if (itemUnavailabilities.length === 0) {
+    throw new Error("item_unavailabilities must contain at least one item");
+  }
+  const token = await getAccessToken();
+  const { siteId, brandId } = await resolveSiteContext(token, options);
+  const url = itemUnavailabilitiesV2Url(brandId, siteId);
+  const response = await axios.post(
+    url,
+    { item_unavailabilities: itemUnavailabilities },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+        "Content-Type": "application/json"
+      },
+      timeout: 15000
+    }
+  );
+
+  console.log(
+    JSON.stringify({
+      msg: "deliveroo.menu.item_unavailabilities",
+      method: "POST",
+      url,
+      brandId,
+      siteId,
+      itemIds: itemUnavailabilities.map((item) => item.item_id)
+    })
+  );
+
+  return {
+    method: "POST",
+    url,
+    brandId,
+    siteId,
+    itemCount: itemUnavailabilities.length,
+    deliveroo: response.data
+  };
+};
+
+export const runScenario8Unavailabilities = async (
+  options?: UnavailabilitySiteOptions & { step?: "1" | "2" | "both" }
+): Promise<{ step1?: Scenario8StepResult; step2?: Scenario8StepResult }> => {
+  const step = options?.step ?? "both";
+  const siteOpts = { siteId: options?.siteId, siteDrnId: options?.siteDrnId };
+  const out: { step1?: Scenario8StepResult; step2?: Scenario8StepResult } = {};
+
+  if (step === "1" || step === "both") {
+    const result = await updateItemUnavailabilities(SCENARIO8_STEP1, siteOpts);
+    out.step1 = { ...result, step: 1, itemUnavailabilities: SCENARIO8_STEP1 };
+  }
+
+  if (step === "both") {
+    await sleep(150);
+  }
+
+  if (step === "2" || step === "both") {
+    const result = await updateItemUnavailabilities(SCENARIO8_STEP2, siteOpts);
+    out.step2 = { ...result, step: 2, itemUnavailabilities: SCENARIO8_STEP2 };
+  }
+
+  return out;
 };
 
 export const fetchDeliverooMenu = async (): Promise<NormalizedMenuItem[]> => {

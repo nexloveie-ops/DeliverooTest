@@ -1,7 +1,14 @@
 import crypto from "node:crypto";
 import express from "express";
 import { config } from "./config.js";
-import { fetchDeliverooMenu, uploadDeliverooMenu } from "./deliveroo.js";
+import {
+  fetchDeliverooMenu,
+  getItemUnavailabilities,
+  parseItemUnavailabilityUpdates,
+  runScenario8Unavailabilities,
+  updateItemUnavailabilities,
+  uploadDeliverooMenu
+} from "./deliveroo.js";
 import { forwardToOwnSystem } from "./forwarder.js";
 import type { NormalizedMenuEvent, NormalizedOrderEvent } from "./types.js";
 import {
@@ -44,6 +51,52 @@ const rememberOnce = (key: string): boolean => {
 
 const toRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+const deliverooAxiosDetail = (error: unknown): unknown => {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error &&
+    typeof (error as { response?: { data?: unknown } }).response?.data !== "undefined"
+  ) {
+    return (error as { response: { data: unknown } }).response.data;
+  }
+  return undefined;
+};
+
+const readUnavailabilitySiteParams = (
+  query: express.Request["query"],
+  body?: Record<string, unknown>
+): { siteId?: string; siteDrnId?: string } => {
+  const q = (key: string): string | undefined => {
+    const value = query[key];
+    return typeof value === "string" && value.length > 0 ? value : undefined;
+  };
+  return {
+    siteId:
+      q("siteId") ??
+      q("site_id") ??
+      (typeof body?.siteId === "string" ? body.siteId : undefined) ??
+      (typeof body?.site_id === "string" ? body.site_id : undefined),
+    siteDrnId:
+      q("siteDrnId") ??
+      q("site_drn_id") ??
+      (typeof body?.siteDrnId === "string" ? body.siteDrnId : undefined) ??
+      (typeof body?.site_drn_id === "string" ? body.site_drn_id : undefined)
+  };
+};
+
+const parseScenario8Step = (
+  query: express.Request["query"],
+  body?: Record<string, unknown>
+): "1" | "2" | "both" => {
+  const raw =
+    (typeof query.step === "string" ? query.step : undefined) ??
+    (typeof body?.step === "string" ? body.step : undefined) ??
+    (typeof body?.step === "number" ? String(body.step) : undefined);
+  if (raw === "1" || raw === "2") return raw;
+  return "both";
+};
 
 const parseMenuUploadErrors = (
   uploadResult: Record<string, unknown>
@@ -271,6 +324,69 @@ app.get("/deliveroo/menu/upload", async (req, res) => {
 app.post("/deliveroo/menu/upload", async (req, res) => {
   const body = req.body as Record<string, unknown>;
   await handleMenuUpload(readUploadParams(req.query, body), res);
+});
+
+app.get("/deliveroo/menu/item-unavailabilities", async (req, res) => {
+  try {
+    const result = await getItemUnavailabilities(readUnavailabilitySiteParams(req.query));
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    res.status(500).json({ ok: false, error: message, detail: deliverooAxiosDetail(error) });
+  }
+});
+
+app.post("/deliveroo/menu/item-unavailabilities", async (req, res) => {
+  const body = req.body as Record<string, unknown>;
+  const updates =
+    parseItemUnavailabilityUpdates(body.item_unavailabilities) ??
+    parseItemUnavailabilityUpdates(body.itemUnavailabilities);
+  if (!updates) {
+    res.status(400).json({
+      ok: false,
+      error:
+        "item_unavailabilities array required (objects with item_id and status: available|unavailable|hidden)"
+    });
+    return;
+  }
+  try {
+    const result = await updateItemUnavailabilities(
+      updates,
+      readUnavailabilitySiteParams(req.query, body)
+    );
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    res.status(500).json({ ok: false, error: message, detail: deliverooAxiosDetail(error) });
+  }
+});
+
+app.post("/deliveroo/menu/scenario8", async (req, res) => {
+  const body = req.body as Record<string, unknown>;
+  const siteParams = readUnavailabilitySiteParams(req.query, body);
+  const step = parseScenario8Step(req.query, body);
+  try {
+    const result = await runScenario8Unavailabilities({ ...siteParams, step });
+    res.json({
+      ok: true,
+      step,
+      expectedFinalState: {
+        orange_juice: "available",
+        granola: "unavailable",
+        whole_milk: "unavailable"
+      },
+      ...result,
+      hint:
+        step === "both"
+          ? "Scenario 8: Portal Start creates orange_juice, granola, whole_milk. This ran step 1 then step 2. For Portal timing, call step=1 then step=2 separately after Start."
+          : step === "1"
+            ? "Scenario 8 step 1 done. Next: POST with step=2 (orange_juice available, whole_milk unavailable)."
+            : "Scenario 8 step 2 done. Final: orange_juice available, granola unavailable, whole_milk unavailable."
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    res.status(500).json({ ok: false, error: message, detail: deliverooAxiosDetail(error) });
+  }
 });
 
 /** Portal / browser URL checks use GET; Deliveroo callbacks are POST only. */

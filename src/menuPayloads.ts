@@ -225,6 +225,15 @@ const buildMutatedMenuJson = (currentMenuJson: string, revision: string): string
     const current = JSON.parse(currentMenuJson) as Record<string, unknown>;
     const stripped = stripServerFieldsFromMenu(current) as Record<string, unknown>;
     const mutated = applyWebhookRevision(stripped, revision);
+    if (!Array.isArray(mutated.site_ids) || mutated.site_ids.length === 0) {
+      return undefined;
+    }
+    if (typeof mutated.name !== "string" || mutated.name.length === 0) {
+      return undefined;
+    }
+    if (!mutated.menu || typeof mutated.menu !== "object") {
+      return undefined;
+    }
     const mutatedJson = JSON.stringify(mutated);
     const strippedStored = JSON.stringify(stripServerFieldsFromMenu(JSON.parse(currentMenuJson)));
     if (mutatedJson !== currentMenuJson && mutatedJson !== strippedStored) {

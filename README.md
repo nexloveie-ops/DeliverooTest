@@ -113,6 +113,7 @@ npm run dev
 **Terminal 2:**
 
 ```bash
+npm run verify:webhook   # required before push/deploy for Scenario 6
 npm run smoke:local
 
 # Scenario 3 (mealtimes):

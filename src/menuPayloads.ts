@@ -108,16 +108,13 @@ export const applyWebhookRevision = (
   }
 
   const mealtimes = Array.isArray(menu.mealtimes) ? menu.mealtimes : [];
-  for (const raw of mealtimes) {
+  mealtimes.forEach((raw, index) => {
     const mealtime = toRecord(raw);
     const description = toRecord(mealtime.description);
     description.en = `Menu sync ${revision}`;
     const image = toRecord(mealtime.image);
-    if (typeof image.url === "string") {
-      const baseUrl = image.url.split("?")[0];
-      image.url = `${baseUrl}?webhook_rev=${revision}`;
-    }
-  }
+    image.url = mealtimeCoverForIndex(index, revision);
+  });
 
   return { ...menuRoot, menu };
 };
@@ -143,9 +140,18 @@ export const buildMenuPayload = (
   return buildMealtimesScenarioPayload(menuId, siteId);
 };
 
-/** Stable JPEG cover for mealtime async image fetch (Scenario 6). */
-const WEBHOOK_MEALTIME_COVER_URL =
-  "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6d/Good_Food_Display_-_NCI_Visuals_Online.jpg/320px-Good_Food_Display_-_NCI_Visuals_Online.jpg";
+/** Stable JPEG covers (curl-verified HTTP 200). Avoid Unsplash + Wikimedia /thumb/ paths. */
+export const WEBHOOK_MEALTIME_COVER_DAY_URL =
+  "https://upload.wikimedia.org/wikipedia/commons/6/6d/Good_Food_Display_-_NCI_Visuals_Online.jpg";
+
+export const WEBHOOK_MEALTIME_COVER_EVENING_URL =
+  "https://picsum.photos/seed/deliveroo-evening-menu/800/600.jpg";
+
+const mealtimeCoverForIndex = (index: number, revision: string): string => {
+  const base =
+    index % 2 === 0 ? WEBHOOK_MEALTIME_COVER_DAY_URL : WEBHOOK_MEALTIME_COVER_EVENING_URL;
+  return `${base.split("?")[0]}?webhook_rev=${revision}`;
+};
 
 /**
  * Scenario 6 minimal menu — matches Portal checklist with no modifiers/bundles.
@@ -186,7 +192,7 @@ export const buildMinimalWebhookScenarioPayload = (
           name: { en: "All Day Menu" },
           description: { en: `Webhook scenario mealtime (rev ${revSuffix})` },
           category_ids: [categoryId],
-          image: { url: WEBHOOK_MEALTIME_COVER_URL },
+          image: { url: WEBHOOK_MEALTIME_COVER_DAY_URL },
           schedule: [0, 1, 2, 3, 4, 5, 6].map((day) => ({
             day_of_week: day,
             time_periods: [{ start: "00:00:00", end: "23:59:00" }]
@@ -415,7 +421,7 @@ export const buildMealtimesScenarioPayload = (
         name: { en: "Daytime Menu" },
         description: { en: rev ? `Daytime menu (rev ${revLabel}).` : "Daytime menu." },
         category_ids: ["cat-breakfast", "cat-main", "cat-special"],
-        image: { url: "https://images.unsplash.com/photo-1533089860892-a7c6f0a986b6" },
+        image: { url: WEBHOOK_MEALTIME_COVER_DAY_URL },
         schedule: [0, 1, 2, 3, 4, 5, 6].map((day) => ({
           day_of_week: day,
           time_periods: [{ start: "00:00:00", end: "11:59:59" }]
@@ -426,7 +432,7 @@ export const buildMealtimesScenarioPayload = (
         name: { en: "Evening Menu" },
         description: { en: rev ? `Evening menu (rev ${revLabel}).` : "Evening menu." },
         category_ids: ["cat-main", "cat-special"],
-        image: { url: "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38" },
+        image: { url: WEBHOOK_MEALTIME_COVER_EVENING_URL },
         schedule: [0, 1, 2, 3, 4, 5, 6].map((day) => ({
           day_of_week: day,
           time_periods: [{ start: "12:00:00", end: "23:59:00" }]
@@ -648,7 +654,7 @@ export const buildBundlesScenarioPayload = (
           name: { en: "All day" },
           description: { en: "Full menu including bundles." },
           category_ids: ["cat-mains", "cat-combos"],
-          image: { url: "https://images.unsplash.com/photo-1533089860892-a7c6f0a986b6" },
+          image: { url: WEBHOOK_MEALTIME_COVER_DAY_URL },
           schedule: [0, 1, 2, 3, 4, 5, 6].map((day) => ({
             day_of_week: day,
             time_periods: [{ start: "00:00:00", end: "23:59:00" }]

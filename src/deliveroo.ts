@@ -226,6 +226,28 @@ const fetchMenuForReplay = async (
   return JSON.stringify(response.data);
 };
 
+/** Deliveroo canonical menu JSON (GET) — required for MATCH_EXISTING_MENU on repeat PUT. */
+const resolveCanonicalMenuBodyJson = async (
+  brandId: string,
+  menuId: string,
+  siteId: string,
+  token: string
+): Promise<{ bodyJson: string; source: "get" | "template" }> => {
+  try {
+    const bodyJson = await fetchMenuForReplay(brandId, menuId, token);
+    JSON.parse(bodyJson);
+    return { bodyJson, source: "get" };
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) {
+      return {
+        bodyJson: serializeNoChangeMenuBody(menuId, siteId),
+        source: "template"
+      };
+    }
+    throw error;
+  }
+};
+
 const putMenuJson = async (
   url: string,
   token: string,
@@ -294,16 +316,22 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
   const url = `${config.deliverooBaseUrl}/menu/v1/brands/${brandId}/menus/${menuId}`;
 
   if (scenario === "nochange" && options?.doubleUpload) {
-    const bodyJson = serializeNoChangeMenuBody(menuId, siteId);
+    const delayMs = options.delayMs ?? 10_000;
+    let { bodyJson, source } = await resolveCanonicalMenuBodyJson(brandId, menuId, siteId, token);
+
+    if (source === "template") {
+      await putMenuJson(url, token, bodyJson);
+      await sleep(delayMs);
+      bodyJson = await fetchMenuForReplay(brandId, menuId, token);
+      source = "get";
+    }
+
     const menuBody = JSON.parse(bodyJson) as Record<string, unknown>;
     const base = buildUploadResultBase(url, brandId, siteId, menuId, scenario, menuBody);
-    const delayMs = options.delayMs ?? 10_000;
     const bodySha256 = crypto.createHash("sha256").update(bodyJson).digest("hex");
 
     const firstDeliveroo = await putMenuJson(url, token, bodyJson);
     await sleep(delayMs);
-    const replayJson = await fetchMenuForReplay(brandId, menuId, token);
-    const payloadsIdentical = bodyJson === replayJson;
     const secondDeliveroo = await putMenuJson(url, token, bodyJson);
     const firstPut = toUploadAttempt(1, firstDeliveroo);
     const secondPut = toUploadAttempt(2, secondDeliveroo);
@@ -314,6 +342,7 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
       result: secondPut.result,
       deliveroo: secondDeliveroo,
       doubleUpload: true,
+      bodySource: source,
       firstPut,
       secondPut
     };
@@ -324,10 +353,9 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
         url: result.url,
         menuId: result.menuId,
         siteId: result.siteId,
+        bodySource: source,
         delayMs,
         bodySha256,
-        replaySha256: crypto.createHash("sha256").update(replayJson).digest("hex"),
-        payloadsIdentical,
         firstResult: firstPut.result,
         secondResult: secondPut.result,
         matchExistingMenu: result.matchExistingMenu
@@ -337,34 +365,39 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
     return result;
   }
 
-  const body =
-    options?.payload ??
-    (scenario === "nochange"
-      ? (JSON.parse(serializeNoChangeMenuBody(menuId, siteId)) as Record<string, unknown>)
-      : buildMenuPayload(menuId, siteId, scenario));
-  const menuBody = toRecord(body);
-  const base = buildUploadResultBase(url, brandId, siteId, menuId, scenario, menuBody);
-  const bodyJson = scenario === "nochange" ? serializeNoChangeMenuBody(menuId, siteId) : JSON.stringify(body);
-  const deliveroo =
-    scenario === "nochange"
-      ? await putMenuJson(url, token, bodyJson)
-      : (
-          await axios.put(url, body, {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              Accept: "application/json",
-              "Content-Type": "application/json"
-            },
-            timeout: 20000
-          })
-        ).data;
+  let bodySource: "get" | "template" | undefined;
+  let deliveroo: unknown;
+  let menuBody: Record<string, unknown>;
 
+  if (scenario === "nochange" && !options?.payload) {
+    const resolved = await resolveCanonicalMenuBodyJson(brandId, menuId, siteId, token);
+    bodySource = resolved.source;
+    menuBody = JSON.parse(resolved.bodyJson) as Record<string, unknown>;
+    deliveroo = await putMenuJson(url, token, resolved.bodyJson);
+  } else {
+    const body =
+      options?.payload ?? buildMenuPayload(menuId, siteId, scenario);
+    menuBody = toRecord(body);
+    deliveroo = (
+      await axios.put(url, body, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+          "Content-Type": "application/json"
+        },
+        timeout: 20000
+      })
+    ).data;
+  }
+
+  const base = buildUploadResultBase(url, brandId, siteId, menuId, scenario, menuBody);
   const uploadResult = parseMenuUploadResult(deliveroo);
   const result: UploadMenuResult = {
     ...base,
     matchExistingMenu: uploadResult.matchExistingMenu,
     result: uploadResult.result,
-    deliveroo
+    deliveroo,
+    bodySource
   };
 
   console.log(

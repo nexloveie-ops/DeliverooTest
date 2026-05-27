@@ -55,6 +55,8 @@ export type UploadMenuResult = {
   deliveroo: unknown;
   /** Present when `doubleUpload` runs two byte-identical PUTs for Scenario 5. */
   doubleUpload?: boolean;
+  /** `get` = replayed from GET menu; `template` = built mealtimes JSON (primed first if new). */
+  bodySource?: "get" | "template";
   firstPut?: MenuUploadAttempt;
   secondPut?: MenuUploadAttempt;
 };

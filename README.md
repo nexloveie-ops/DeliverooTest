@@ -49,9 +49,9 @@ Response includes audit block `put`: `{ method, url, brandId, siteId, menuId, si
 |------------|-------------|-------------------|
 | `mealtimes` | Menu upload with mealtimes | 2 mealtimes, 7×24h schedules |
 | `bundles` | Menu upload with bundles | 2× `BUNDLE`, `bundle-item` modifiers, price overrides, `party_size` — per [Menu API Guidelines](https://api-docs.deliveroo.com/docs/menu-api-guidelines) |
-| `nochange` | Update menu with no changes (Scenario 5) | **Same JSON as `mealtimes` (Scenario 3)**. Use **`"double": true`** once per Start (two identical PUTs, 10s apart) — [Menu API Overview](https://api-docs.deliveroo.com/docs/menu-api-overview) |
+| `nochange` | Update menu with no changes (Scenario 5) | **GET menu → PUT the same canonical JSON twice** (`double: true`). Template JSON ≠ stored menu and fails Portal comparison — [Menu API Overview](https://api-docs.deliveroo.com/docs/menu-api-overview) |
 
-Top-level `matchExistingMenu` reflects the **second** PUT when `double: true`. Do **not** call `bundles` or extra uploads on the same `menu_id` in the same scenario run — Portal compares the 1st and 2nd PUT bodies in that window.
+Complete **Scenario 3** on the same `menu_id` first so GET returns a menu. `matchExistingMenu` on the second PUT should be `true`.
 
 ### Webhooks (`/webhooks/deliveroo`)
 
@@ -130,7 +130,7 @@ curl -X POST "https://<cloud-run-url>/deliveroo/menu/upload" \
   -d '{"menuId":"123156468","scenario":"nochange","double":true,"delayMs":10000,"site_drn_id":"<from scenario parameters>"}'
 ```
 
-If Scenario 5 failed before: your `menu_id` may have been overwritten by `bundles` or the old minimal `nochange` burger menu. Run Scenario 3 (`mealtimes`) once on that id, then Scenario 5 with **only one** `double:true` call after Start.
+If Scenario 5 failed with “second payload differs”: the connector was sending builder JSON while Deliveroo compares **canonical GET menu** bodies. Run Scenario 3 (`mealtimes`) on that `menu_id`, then Scenario 5 with **one** `double:true` call after Start.
 
 Or browser:
 

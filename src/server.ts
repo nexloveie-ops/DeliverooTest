@@ -106,7 +106,7 @@ const handleMenuUpload = async (
       hint:
         put.scenario === "nochange"
           ? put.doubleUpload
-            ? "Scenario 5: two identical mealtimes PUTs (Scenario 3 payload). Call only ONCE per Start with double:true. Do not mix bundles/nochange singles in the same run."
+            ? "Scenario 5: two identical PUTs using GET menu JSON (Deliveroo canonical form). Call only ONCE per Start with double:true."
             : "Scenario 5: use scenario=nochange (same JSON as mealtimes). Prefer double:true once per Start."
           : "Per Deliveroo docs: trigger scenario Start first, then call this within ~30s using API Suite sandbox credentials. PUT must match menu_id in the portal."
     });

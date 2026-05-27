@@ -40,7 +40,7 @@ Calls official v1 endpoint:
 Query/body parameters:
 
 - `menuId` / `menu_id` — **must match** the ID entered in the Developer Portal scenario
-- `scenario` — `mealtimes` (default), `bundles` (4), `nochange` (5), `webhook` (6), or `default`
+- `scenario` — `mealtimes` (default), `bundles` (4), `nochange` (5), `webhook` (6), `imagecache` (7), or `default`
 - `siteId` / `site_id` — optional (defaults to `DELIVEROO_LOCATION_ID`, e.g. `100121`)
 - `siteDrnId` / `site_drn_id` — optional scenario parameter; resolved to `site_id` when possible
 
@@ -52,6 +52,7 @@ Response includes audit block `put`: `{ method, url, brandId, siteId, menuId, si
 | `bundles` | Menu upload with bundles | 2× `BUNDLE`, `bundle-item` modifiers, price overrides, `party_size` — per [Menu API Guidelines](https://api-docs.deliveroo.com/docs/menu-api-guidelines) |
 | `nochange` | Update menu with no changes (Scenario 5) | **GET menu → PUT the same canonical JSON twice** (`double: true`). Template JSON ≠ stored menu and fails Portal comparison — [Menu API Overview](https://api-docs.deliveroo.com/docs/menu-api-overview) |
 | `webhook` | Menu upload + `menu.upload_result` webhook (Scenario 6) | **Existing menu:** GET → mutate in place (differs, avoids template replace). **New menu:** mealtimes-lite template. Portal needs async `httpStatus` **200** on webhook (500 = menu processing failed). **Start** → upload within **30s** |
+| `imagecache` | Image caching headers (Scenario 7) | Upload includes ITEM image URL (`https://placehold.co/640x480.jpg`) where `HEAD` returns `ETag`; suitable for Deliveroo cache-header validation |
 
 Complete **Scenario 3** on the same `menu_id` first so GET returns a menu. `matchExistingMenu` on the second PUT should be `true`.
 

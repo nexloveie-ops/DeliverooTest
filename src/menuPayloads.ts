@@ -30,7 +30,13 @@ const bundleItemOverride = (bundleId: string, price: number): Record<string, unk
   type: "ITEM"
 });
 
-export type MenuScenario = "default" | "mealtimes" | "bundles" | "nochange" | "webhook";
+export type MenuScenario =
+  | "default"
+  | "mealtimes"
+  | "bundles"
+  | "nochange"
+  | "webhook"
+  | "imagecache";
 
 const revisionPriceBump = (revision: string): number => {
   const numeric = Number(revision);
@@ -137,6 +143,9 @@ export const buildMenuPayload = (
   if (scenario === "mealtimes") {
     return buildMealtimesScenarioPayload(menuId, siteId);
   }
+  if (scenario === "imagecache") {
+    return buildMealtimesScenarioPayload(menuId, siteId, revision);
+  }
   return buildMealtimesScenarioPayload(menuId, siteId);
 };
 
@@ -146,6 +155,9 @@ export const WEBHOOK_MEALTIME_COVER_DAY_URL =
 
 export const WEBHOOK_MEALTIME_COVER_EVENING_URL =
   "https://picsum.photos/seed/deliveroo-evening-menu/800/600.jpg";
+
+/** Stable item image URL; HEAD returns ETag for Scenario 7 checks. */
+export const ITEM_IMAGE_CACHEABLE_URL = "https://placehold.co/640x480.jpg";
 
 const mealtimeCoverForIndex = (index: number): string =>
   index % 2 === 0 ? WEBHOOK_MEALTIME_COVER_DAY_URL : WEBHOOK_MEALTIME_COVER_EVENING_URL;
@@ -179,7 +191,8 @@ export const buildMinimalWebhookScenarioPayload = (
           operational_name: "webhook-test-item",
           plu: `WH${revSuffix}`,
           price_info: { price: 1000 + bump, overrides: [] },
-          modifier_ids: []
+          modifier_ids: [],
+          image: { url: ITEM_IMAGE_CACHEABLE_URL }
         })
       ],
       modifiers: [],
@@ -308,7 +321,8 @@ export const buildMealtimesScenarioPayload = (
         operational_name: "test-burger",
         plu: "TB001",
         price_info: { price: 1000 + bump, overrides: [] },
-        modifier_ids: ["mod-spice", "mod-extra"]
+        modifier_ids: ["mod-spice", "mod-extra"],
+        image: { url: ITEM_IMAGE_CACHEABLE_URL }
       }),
       itemBase({
         id: "item-wrap",

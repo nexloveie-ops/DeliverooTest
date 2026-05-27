@@ -98,13 +98,14 @@ app.post("/deliveroo/menu/sync", async (_req, res) => {
 
 const parseScenario = (
   value: string | undefined
-): "default" | "mealtimes" | "bundles" | "nochange" | "webhook" => {
+): "default" | "mealtimes" | "bundles" | "nochange" | "webhook" | "imagecache" => {
   if (
     value === "bundles" ||
     value === "mealtimes" ||
     value === "default" ||
     value === "nochange" ||
-    value === "webhook"
+    value === "webhook" ||
+    value === "imagecache"
   ) {
     return value;
   }
@@ -121,7 +122,7 @@ const handleMenuUpload = async (
     menuId?: string;
     siteId?: string;
     siteDrnId?: string;
-    scenario?: "default" | "mealtimes" | "bundles" | "nochange" | "webhook";
+    scenario?: "default" | "mealtimes" | "bundles" | "nochange" | "webhook" | "imagecache";
     payload?: unknown;
     doubleUpload?: boolean;
     delayMs?: number;
@@ -148,6 +149,8 @@ const handleMenuUpload = async (
             ? put.doubleUpload
               ? "Scenario 5: two identical PUTs using GET menu JSON (Deliveroo canonical form). Call only ONCE per Start with double:true."
               : "Scenario 5: use scenario=nochange (same JSON as mealtimes). Prefer double:true once per Start."
+            : put.scenario === "imagecache"
+              ? "Scenario 7: payload includes ITEM image URL with cache headers support (HEAD should return ETag or Last-Modified)."
             : "Per Deliveroo docs: trigger scenario Start first, then call this within ~30s using API Suite sandbox credentials. PUT must match menu_id in the portal."
     });
   } catch (error) {
@@ -170,7 +173,7 @@ const readUploadParams = (
   menuId?: string;
   siteId?: string;
   siteDrnId?: string;
-  scenario?: "default" | "mealtimes" | "bundles" | "nochange" | "webhook";
+  scenario?: "default" | "mealtimes" | "bundles" | "nochange" | "webhook" | "imagecache";
   payload?: unknown;
   doubleUpload?: boolean;
   delayMs?: number;

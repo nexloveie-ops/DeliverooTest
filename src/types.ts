@@ -39,6 +39,8 @@ export type UploadMenuResult = {
   siteId: string;
   menuId: string;
   siteIds: string[];
+  scenario: string;
   mealtimesCount: number;
+  bundlesCount: number;
   deliveroo: unknown;
 };

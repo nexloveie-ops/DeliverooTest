@@ -66,11 +66,19 @@ app.post("/deliveroo/menu/sync", async (_req, res) => {
   }
 });
 
+const parseScenario = (value: string | undefined): "default" | "mealtimes" | "bundles" => {
+  if (value === "bundles" || value === "mealtimes" || value === "default") {
+    return value;
+  }
+  return "mealtimes";
+};
+
 const handleMenuUpload = async (
   input: {
     menuId?: string;
     siteId?: string;
     siteDrnId?: string;
+    scenario?: "default" | "mealtimes" | "bundles";
     payload?: unknown;
   },
   res: express.Response
@@ -99,7 +107,13 @@ const handleMenuUpload = async (
 const readUploadParams = (
   query: express.Request["query"],
   body?: Record<string, unknown>
-): { menuId?: string; siteId?: string; siteDrnId?: string; payload?: unknown } => {
+): {
+  menuId?: string;
+  siteId?: string;
+  siteDrnId?: string;
+  scenario?: "default" | "mealtimes" | "bundles";
+  payload?: unknown;
+} => {
   const q = (key: string): string | undefined => {
     const value = query[key];
     return typeof value === "string" && value.length > 0 ? value : undefined;
@@ -119,10 +133,14 @@ const readUploadParams = (
     q("site_drn_id") ??
     (typeof body?.siteDrnId === "string" ? body.siteDrnId : undefined) ??
     (typeof body?.site_drn_id === "string" ? body.site_drn_id : undefined);
+  const scenarioRaw =
+    q("scenario") ??
+    (typeof body?.scenario === "string" ? body.scenario : undefined);
+  const scenario = parseScenario(scenarioRaw);
   const payload =
     body && typeof body === "object" && "payload" in body ? body.payload : menuId ? undefined : body;
 
-  return { menuId, siteId, siteDrnId, payload };
+  return { menuId, siteId, siteDrnId, scenario, payload };
 };
 
 app.get("/deliveroo/menu/upload", async (req, res) => {

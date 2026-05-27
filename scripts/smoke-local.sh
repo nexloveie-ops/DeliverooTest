@@ -5,11 +5,12 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-http://127.0.0.1:8090}"
 MENU_ID="${MENU_ID:-test-menu-local}"
 SITE_DRN_ID="${SITE_DRN_ID:-}"
+SCENARIO="${SCENARIO:-mealtimes}"
 
 echo "==> healthz"
 curl -fsS "${BASE_URL}/healthz" | grep -q '"ok":true'
 
-BODY=$(printf '{"menuId":"%s"' "$MENU_ID")
+BODY=$(printf '{"menuId":"%s","scenario":"%s"' "$MENU_ID" "$SCENARIO")
 if [ -n "$SITE_DRN_ID" ]; then
   BODY+=$(printf ',"site_drn_id":"%s"' "$SITE_DRN_ID")
 fi
@@ -31,6 +32,14 @@ echo "$RESP" | grep -q '"method":"PUT"' || {
   echo "$RESP"
   exit 1
 }
+
+if [ "$SCENARIO" = "bundles" ]; then
+  echo "$RESP" | grep -q '"bundlesCount":2' || {
+    echo "FAIL: bundles scenario should include 2 bundles"
+    echo "$RESP"
+    exit 1
+  }
+fi
 
 echo "PASS: local smoke test"
 echo "$RESP"

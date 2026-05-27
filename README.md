@@ -39,12 +39,16 @@ Calls official v1 endpoint:
 Query/body parameters:
 
 - `menuId` / `menu_id` — **must match** the ID entered in the Developer Portal scenario
+- `scenario` — `mealtimes` (default), `bundles` (Scenario 4), or `default`
 - `siteId` / `site_id` — optional (defaults to `DELIVEROO_LOCATION_ID`, e.g. `100121`)
 - `siteDrnId` / `site_drn_id` — optional scenario parameter; resolved to `site_id` when possible
 
-Response includes audit block `put`: `{ method, url, brandId, siteId, menuId, siteIds, mealtimesCount }`.
+Response includes audit block `put`: `{ method, url, brandId, siteId, menuId, siteIds, scenario, mealtimesCount, bundlesCount }`.
 
-Default payload includes **2 mealtimes** with cover image, name, description, and non-overlapping schedules covering 7×24h (required by Deliveroo validation).
+| `scenario` | Portal test | Payload highlights |
+|------------|-------------|-------------------|
+| `mealtimes` | Menu upload with mealtimes | 2 mealtimes, 7×24h schedules |
+| `bundles` | Menu upload with bundles | 2× `BUNDLE`, `bundle-item` modifiers, price overrides, `party_size` — per [Menu API Guidelines](https://api-docs.deliveroo.com/docs/menu-api-guidelines) |
 
 ### Webhooks (`/webhooks/deliveroo`)
 
@@ -95,8 +99,11 @@ npm run dev
 ```bash
 npm run smoke:local
 
-# Match a scenario run exactly:
-MENU_ID=123156468 SITE_DRN_ID=607326a3-ef2d-4b8b-b013-a91c52c3954f npm run smoke:local
+# Scenario 3 (mealtimes):
+MENU_ID=123156468 SITE_DRN_ID=607326a3-ef2d-4b8b-b013-a91c52c3954f SCENARIO=mealtimes npm run smoke:local
+
+# Scenario 4 (bundles):
+MENU_ID=your-bundle-menu-id SCENARIO=bundles npm run smoke:local
 ```
 
 Must see `PASS` and a `put.url` pointing at `api-sandbox.../menu/v1/brands/.../menus/...`.
@@ -109,7 +116,7 @@ Must see `PASS` and a `put.url` pointing at `api-sandbox.../menu/v1/brands/.../m
 ```bash
 curl -X POST "https://<cloud-run-url>/deliveroo/menu/upload" \
   -H "Content-Type: application/json" \
-  -d '{"menuId":"<same as portal>","site_drn_id":"<from scenario parameters>"}'
+  -d '{"menuId":"<same as portal>","scenario":"bundles","site_drn_id":"<from scenario parameters>"}'
 ```
 
 Or browser:

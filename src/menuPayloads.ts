@@ -226,7 +226,7 @@ export const buildScenario13LargeMenuPayload = (
             en: `Scenario 13 (${SCENARIO13_ITEM_COUNT} items, rev ${revSuffix})`
           },
           category_ids: categoryIds,
-          image: {},
+          image: { url: WEBHOOK_MEALTIME_COVER_DAY_URL },
           schedule: [0, 1, 2, 3, 4, 5, 6].map((day) => ({
             day_of_week: day,
             time_periods: [{ start: "00:00:00", end: "23:59:00" }]
@@ -242,14 +242,14 @@ const countMenuItems = (menu: Record<string, unknown>): number => {
   return items.filter((raw) => toRecord(raw).type === "ITEM").length;
 };
 
-/** Remove mealtime image URLs — async processing often 500s on sandbox image fetch. */
-const stripMealtimeImages = (menuRoot: Record<string, unknown>): void => {
+/** Mealtime cover is required by API ("cover photo url is missing" if empty). */
+const setMealtimeCoverImages = (menuRoot: Record<string, unknown>): void => {
   const menu = toRecord(menuRoot.menu);
   const mealtimes = Array.isArray(menu.mealtimes) ? menu.mealtimes : [];
-  for (const raw of mealtimes) {
+  mealtimes.forEach((raw, index) => {
     const mealtime = toRecord(raw);
-    mealtime.image = {};
-  }
+    mealtime.image = { url: mealtimeCoverForIndex(index) };
+  });
 };
 
 /**
@@ -260,7 +260,7 @@ export const applyScenario13Revision = (
   revision: string
 ): Record<string, unknown> => {
   const revised = applyWebhookRevision(menuRoot, revision);
-  stripMealtimeImages(revised);
+  setMealtimeCoverImages(revised);
   return revised;
 };
 
@@ -342,7 +342,7 @@ export const extendMenuToScenario13 = (
         : [];
       if (!mealCatIds.includes(addCategoryId)) mealCatIds.push(addCategoryId);
       meal.category_ids = mealCatIds;
-      meal.image = {};
+      meal.image = { url: mealtimeCoverForIndex(m) };
       mealtimes[m] = meal;
     }
 

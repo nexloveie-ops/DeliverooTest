@@ -64,11 +64,12 @@ export const createMenuV3PresignedUpload = async (
   });
   const data = response.data;
   const record = toRecord(data);
+  const s3Url = asString(record.upload_url) ?? asString(record.s3_url);
   return {
     url,
     deliveroo: data,
     menuId: asString(record.id) ?? menuId,
-    s3Url: asString(record.s3_url),
+    s3Url,
     version: asString(record.version)
   };
 };
@@ -202,7 +203,9 @@ export const runMenuV3Upload = async (
     options.token
   );
   if (!presign.s3Url) {
-    throw new Error("Menu V3 presign response missing s3_url");
+    throw new Error(
+      `Menu V3 presign response missing upload_url/s3_url: ${JSON.stringify(presign.deliveroo)}`
+    );
   }
 
   const s3Upload = await uploadMenuJsonToS3(presign.s3Url, options.bodyJson);

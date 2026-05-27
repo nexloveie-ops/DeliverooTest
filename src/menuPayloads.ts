@@ -226,7 +226,7 @@ export const buildScenario13LargeMenuPayload = (
             en: `Scenario 13 (${SCENARIO13_ITEM_COUNT} items, rev ${revSuffix})`
           },
           category_ids: categoryIds,
-          image: { url: WEBHOOK_MEALTIME_COVER_DAY_URL },
+          image: {},
           schedule: [0, 1, 2, 3, 4, 5, 6].map((day) => ({
             day_of_week: day,
             time_periods: [{ start: "00:00:00", end: "23:59:00" }]

@@ -60,7 +60,20 @@ app.post("/deliveroo/menu/sync", async (_req, res) => {
 
 app.post("/deliveroo/menu/upload", async (req, res) => {
   try {
-    const result = await uploadDeliverooMenu(req.body);
+    const body = req.body as Record<string, unknown>;
+    const menuId =
+      typeof body?.menuId === "string"
+        ? body.menuId
+        : typeof body?.menu_id === "string"
+          ? body.menu_id
+          : undefined;
+    const payload =
+      body && typeof body === "object" && "payload" in body
+        ? body.payload
+        : menuId
+          ? undefined
+          : req.body;
+    const result = await uploadDeliverooMenu({ menuId, payload });
     res.json({ ok: true, result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";

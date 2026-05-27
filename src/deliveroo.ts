@@ -100,11 +100,16 @@ const resolveMenuId = (siteId: string): string => {
   return config.deliverooMenuId || `test-menu-${siteId}`;
 };
 
-export const uploadDeliverooMenu = async (payload?: unknown): Promise<unknown> => {
+type UploadMenuOptions = {
+  menuId?: string;
+  payload?: unknown;
+};
+
+export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<unknown> => {
   const token = await getAccessToken();
   const siteId = resolveSiteId();
   const brandId = await resolveBrandId(token, siteId);
-  const menuId = resolveMenuId(siteId);
+  const menuId = options?.menuId ?? resolveMenuId(siteId);
 
   const defaultPayload = {
     name: menuId,
@@ -114,6 +119,11 @@ export const uploadDeliverooMenu = async (payload?: unknown): Promise<unknown> =
         {
           id: "cat-main",
           name: { en: "Main" },
+          item_ids: ["item-burger", "item-wrap"]
+        },
+        {
+          id: "cat-special",
+          name: { en: "Specials" },
           item_ids: ["item-burger"]
         }
       ],
@@ -126,8 +136,8 @@ export const uploadDeliverooMenu = async (payload?: unknown): Promise<unknown> =
           price_info: { price: 1000 },
           tax_rate: "13.5",
           plu: "TB001",
-          modifier_ids: [],
-          diets: [],
+          modifier_ids: ["mod-spice", "mod-extra"],
+          diets: ["vegetarian"],
           allergies: [],
           classifications: [],
           contains_alcohol: false,
@@ -141,9 +151,148 @@ export const uploadDeliverooMenu = async (payload?: unknown): Promise<unknown> =
           is_meal_card_not_eligible: false,
           max_quantity: null,
           operational_name: "test-burger"
+        },
+        {
+          id: "item-wrap",
+          type: "ITEM",
+          name: { en: "Test Wrap" },
+          description: { en: "Second menu item for scenario validation" },
+          price_info: { price: 900 },
+          tax_rate: "13.5",
+          plu: "TW001",
+          modifier_ids: ["mod-extra"],
+          diets: ["vegan"],
+          allergies: [],
+          classifications: [],
+          contains_alcohol: false,
+          highlights: [],
+          external_data: "",
+          barcodes: [],
+          image: {},
+          nutritional_info: {},
+          is_eligible_as_replacement: true,
+          is_eligible_for_substitution: true,
+          is_meal_card_not_eligible: false,
+          max_quantity: null,
+          operational_name: "test-wrap"
+        },
+        {
+          id: "opt-mild",
+          type: "CHOICE",
+          name: { en: "Mild" },
+          description: { en: "Mild spice level" },
+          price_info: { price: 0 },
+          tax_rate: "13.5",
+          plu: "SP001",
+          modifier_ids: [],
+          diets: [],
+          allergies: [],
+          classifications: [],
+          contains_alcohol: false,
+          highlights: [],
+          external_data: "",
+          barcodes: [],
+          image: {},
+          nutritional_info: {},
+          is_eligible_as_replacement: false,
+          is_eligible_for_substitution: true,
+          is_meal_card_not_eligible: false,
+          max_quantity: 1,
+          operational_name: "mild"
+        },
+        {
+          id: "opt-spicy",
+          type: "CHOICE",
+          name: { en: "Spicy" },
+          description: { en: "Hot spice level" },
+          price_info: { price: 0 },
+          tax_rate: "13.5",
+          plu: "SP002",
+          modifier_ids: [],
+          diets: [],
+          allergies: [],
+          classifications: [],
+          contains_alcohol: false,
+          highlights: [],
+          external_data: "",
+          barcodes: [],
+          image: {},
+          nutritional_info: {},
+          is_eligible_as_replacement: false,
+          is_eligible_for_substitution: true,
+          is_meal_card_not_eligible: false,
+          max_quantity: 1,
+          operational_name: "spicy"
+        },
+        {
+          id: "opt-cheese",
+          type: "CHOICE",
+          name: { en: "Extra Cheese" },
+          description: { en: "Add extra cheese" },
+          price_info: { price: 100 },
+          tax_rate: "13.5",
+          plu: "EX001",
+          modifier_ids: [],
+          diets: ["vegetarian"],
+          allergies: [],
+          classifications: [],
+          contains_alcohol: false,
+          highlights: [],
+          external_data: "",
+          barcodes: [],
+          image: {},
+          nutritional_info: {},
+          is_eligible_as_replacement: false,
+          is_eligible_for_substitution: true,
+          is_meal_card_not_eligible: false,
+          max_quantity: 2,
+          operational_name: "extra-cheese"
+        },
+        {
+          id: "opt-bacon",
+          type: "CHOICE",
+          name: { en: "Extra Bacon" },
+          description: { en: "Add extra bacon" },
+          price_info: { price: 150 },
+          tax_rate: "13.5",
+          plu: "EX002",
+          modifier_ids: [],
+          diets: [],
+          allergies: [],
+          classifications: [],
+          contains_alcohol: false,
+          highlights: [],
+          external_data: "",
+          barcodes: [],
+          image: {},
+          nutritional_info: {},
+          is_eligible_as_replacement: false,
+          is_eligible_for_substitution: true,
+          is_meal_card_not_eligible: false,
+          max_quantity: 2,
+          operational_name: "extra-bacon"
         }
       ],
-      modifiers: [],
+      modifiers: [
+        {
+          id: "mod-spice",
+          name: { en: "Spice Level" },
+          description: { en: "Choose one spice level" },
+          type: "cooking-instruction",
+          min_selection: 1,
+          max_selection: 1,
+          item_ids: ["opt-mild", "opt-spicy"]
+        },
+        {
+          id: "mod-extra",
+          name: { en: "Add Extras" },
+          description: { en: "Choose your extras" },
+          type: "add-ingredient",
+          min_selection: 0,
+          max_selection: 2,
+          item_ids: ["opt-cheese", "opt-bacon"]
+        }
+      ],
       mealtimes: [
         {
           id: "all-day",
@@ -166,7 +315,7 @@ export const uploadDeliverooMenu = async (payload?: unknown): Promise<unknown> =
   };
 
   const url = `${config.deliverooBaseUrl}/menu/v1/brands/${brandId}/menus/${menuId}`;
-  const response = await axios.put(url, payload ?? defaultPayload, {
+  const response = await axios.put(url, options?.payload ?? defaultPayload, {
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: "application/json",

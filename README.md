@@ -18,7 +18,8 @@ It does **not** include inventory deduction, BOM rules, or reporting.
   Fetches menu from Deliveroo API, normalizes records, returns JSON, and optionally forwards data.
 
 - `POST /deliveroo/menu/upload`  
-  Uploads a test menu to Deliveroo (`menu/v1`) using OAuth client credentials.
+  Uploads a test menu to Deliveroo (`menu/v1`) using OAuth client credentials.  
+  You can pass `menuId` (or `menu_id`) in JSON body to match Deliveroo scenario input.
 
 - `POST /webhooks/deliveroo`  
   Receives Deliveroo webhook, validates signature (if configured), performs basic idempotency check, normalizes event, and optionally forwards.

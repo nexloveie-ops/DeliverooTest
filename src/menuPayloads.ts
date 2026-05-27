@@ -9,10 +9,13 @@ const TAX_IE = "13.5";
 /** Required on menu object for V3 / async processing (IE sandbox). */
 export const DEFAULT_MENU_CURRENCY_CODE = "EUR";
 
-const ensureMenuCurrencyCode = (menu: Record<string, unknown>): void => {
-  const existing = menu.currency_code;
-  if (typeof existing !== "string" || existing.trim().length === 0) {
+const ensureMenuPublishFields = (menu: Record<string, unknown>): void => {
+  const currency = menu.currency_code;
+  if (typeof currency !== "string" || currency.trim().length === 0) {
     menu.currency_code = DEFAULT_MENU_CURRENCY_CODE;
+  }
+  if (menu.is_pos_integrated === undefined) {
+    menu.is_pos_integrated = false;
   }
 };
 
@@ -59,6 +62,16 @@ export const SCENARIO13_ITEM_ID_PREFIX = "s13-item-";
 
 export const scenario13ItemId = (index: number): string =>
   `${SCENARIO13_ITEM_ID_PREFIX}${String(index).padStart(3, "0")}`;
+
+/**
+ * Stable public JPEG (~1920px), real image/jpeg — for Scenario 13 / webhook mealtimes.
+ * placehold.co triggered sandbox http_status 500 during async processing.
+ */
+export const STABLE_MEALTIME_COVER_JPEG_URL =
+  "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6d/Good_Food_Display_-_NCI_Visuals_Online.jpg/1920px-Good_Food_Display_-_NCI_Visuals_Online.jpg";
+
+/** Scenario 13 default mealtime hero (JPEG, 1920×1080 per guidelines). */
+export const SCENARIO13_MEALTIME_COVER_URL = STABLE_MEALTIME_COVER_JPEG_URL;
 
 const revisionPriceBump = (revision: string): number => {
   const numeric = Number(revision);
@@ -233,15 +246,13 @@ export const buildScenario13LargeMenuPayload = (
             en: `Scenario 13 (${SCENARIO13_ITEM_COUNT} items, rev ${revSuffix})`
           },
           category_ids: categoryIds,
-          image: { url: WEBHOOK_MEALTIME_COVER_DAY_URL },
-          schedule: [0, 1, 2, 3, 4, 5, 6].map((day) => ({
-            day_of_week: day,
-            time_periods: [{ start: "00:00:00", end: "23:59:00" }]
-          }))
+          image: { url: SCENARIO13_MEALTIME_COVER_URL },
+          /** Default mealtime (no schedule) per Menu API Guidelines — 7D/24H not required. */
+          schedule: []
         }
       ]
   };
-  ensureMenuCurrencyCode(menu);
+  ensureMenuPublishFields(menu);
 
   return {
     name: menuId,
@@ -366,7 +377,7 @@ export const extendMenuToScenario13 = (
       mealtimes,
       modifiers: menu.modifiers ?? []
     };
-    ensureMenuCurrencyCode(menuSection);
+    ensureMenuPublishFields(menuSection);
     const root = {
       ...stripped,
       name: menuId,
@@ -432,11 +443,9 @@ export const buildScenario13MenuJson = (
   };
 };
 
-/** Mealtime hero cover: min 1920×1080, 16:9 per Menu API Guidelines. */
-export const WEBHOOK_MEALTIME_COVER_DAY_URL = "https://placehold.co/1920x1080.jpg";
+export const WEBHOOK_MEALTIME_COVER_DAY_URL = STABLE_MEALTIME_COVER_JPEG_URL;
 
-export const WEBHOOK_MEALTIME_COVER_EVENING_URL =
-  "https://picsum.photos/seed/deliveroo-evening-menu/1920/1080";
+export const WEBHOOK_MEALTIME_COVER_EVENING_URL = STABLE_MEALTIME_COVER_JPEG_URL;
 
 /** Stable item image URL; HEAD returns ETag for Scenario 7 checks. */
 export const ITEM_IMAGE_CACHEABLE_URL = "https://placehold.co/640x480.jpg";
@@ -489,7 +498,7 @@ export const buildMinimalWebhookScenarioPayload = (
         }
       ]
   };
-  ensureMenuCurrencyCode(menu);
+  ensureMenuPublishFields(menu);
 
   return {
     name: menuId,

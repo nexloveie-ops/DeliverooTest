@@ -165,7 +165,7 @@ curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario13?step=post" \
 
 POST sets `s13-item-001` to **unavailable** after webhook.
 
-**Scenario 13 troubleshooting:** Portal needs webhook `http_status` **200**. If v1 PUT keeps returning **500**, deploy latest code (V3 default) and retry with a **fresh** Portal `menu_id` after Start. Response `put.uploadPath` should be `"v3"` with `put.v3.jobId`. Legacy v1: `?uploadApi=v1`. Payload uses 10 categories and one mealtime cover (1920×1080); per-item images caused sandbox processing errors.
+**Scenario 13 troubleshooting:** Portal needs webhook `http_status` **200** (`400` = invalid menu, `500` = other processing error per [Menu Webhook](https://api-docs.deliveroo.com/reference/menu-events-webhook)). Payload: V3 + template, `currency_code: EUR`, `is_pos_integrated: false`, default mealtime (`schedule: []`), stable Wikimedia JPEG cover (not placehold.co), no per-item images. Use a **fresh** `menu_id` after Start; `put.uploadPath` should be `"v3"`.
 
 **Scenario 6:** Portal `menu_id` can stay **`123156468`**. Flow: **Start** → within **30s** upload with `scenario=webhook` → wait **1–5 min** for Deliveroo `POST` to `/webhooks/deliveroo` (must return **200**).
 

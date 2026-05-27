@@ -61,4 +61,10 @@ export type UploadMenuResult = {
   secondPut?: MenuUploadAttempt;
   /** Scenario 6: unique revision baked into item prices/descriptions. */
   menuRevision?: string;
+  /** SHA-256 of GET menu before PUT (Scenario 6). */
+  storedMenuSha256?: string;
+  /** SHA-256 of PUT body bytes (Scenario 6). */
+  uploadBodySha256?: string;
+  /** False only when PUT body matched stored GET bytes (Portal will reject). */
+  payloadDiffersFromStored?: boolean;
 };

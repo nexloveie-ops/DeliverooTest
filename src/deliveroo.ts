@@ -3,10 +3,12 @@ import axios from "axios";
 import { config } from "./config.js";
 import {
   buildMenuPayload,
+  buildWebhookScenarioPayload,
   buildWebhookUploadBody,
   countBundlesInPayload,
   serializeNoChangeMenuBody,
-  type MenuScenario
+  type MenuScenario,
+  type WebhookUploadBodyStrategy
 } from "./menuPayloads.js";
 import type { MenuUploadAttempt, NormalizedMenuItem, UploadMenuResult } from "./types.js";
 
@@ -209,6 +211,8 @@ type UploadMenuOptions = {
   delayMs?: number;
   /** Scenario 6: allocate a fresh menu id when the portal omits menuId. */
   generateMenuId?: boolean;
+  /** Scenario 6: `template` (default), `mutate` (GET+revision), or `auto`. */
+  webhookBodyStrategy?: WebhookUploadBodyStrategy;
 };
 
 const sleep = (ms: number): Promise<void> =>
@@ -382,21 +386,80 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
     menuBody = JSON.parse(resolved.bodyJson) as Record<string, unknown>;
     deliveroo = await putMenuJson(url, token, resolved.bodyJson);
   } else if (scenario === "webhook" && !options?.payload) {
-    const revision = menuRevision ?? String(Date.now());
+    const webhookStrategy = options?.webhookBodyStrategy ?? "auto";
+    let revision = menuRevision ?? String(Date.now());
     let currentMenuJson: string | undefined;
+    let storedMenuSha256: string | undefined;
+
     try {
       currentMenuJson = await fetchMenuForReplay(brandId, menuId, token);
-      bodySource = "get";
+      storedMenuSha256 = crypto.createHash("sha256").update(currentMenuJson).digest("hex");
     } catch (error) {
-      if (axios.isAxiosError(error) && error.response?.status === 404) {
-        bodySource = "template";
-      } else {
+      if (!axios.isAxiosError(error) || error.response?.status !== 404) {
         throw error;
       }
     }
-    const bodyJson = buildWebhookUploadBody(menuId, siteId, revision, currentMenuJson);
+
+    bodySource = "template";
+    let bodyJson = buildWebhookUploadBody(
+      menuId,
+      siteId,
+      revision,
+      currentMenuJson,
+      webhookStrategy
+    );
+    if (bodyJson !== JSON.stringify(buildWebhookScenarioPayload(menuId, siteId, revision))) {
+      bodySource = "get";
+    }
+
+    let uploadBodySha256 = crypto.createHash("sha256").update(bodyJson).digest("hex");
+    let payloadDiffersFromStored =
+      !storedMenuSha256 || uploadBodySha256 !== storedMenuSha256;
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      deliveroo = await putMenuJson(url, token, bodyJson);
+      const parsed = parseMenuUploadResult(deliveroo);
+      if (!parsed.matchExistingMenu) break;
+      revision = String(Date.now() + attempt + 1);
+      bodyJson = JSON.stringify(buildWebhookScenarioPayload(menuId, siteId, revision));
+      bodySource = "template";
+      uploadBodySha256 = crypto.createHash("sha256").update(bodyJson).digest("hex");
+      payloadDiffersFromStored = true;
+    }
+
     menuBody = JSON.parse(bodyJson) as Record<string, unknown>;
-    deliveroo = await putMenuJson(url, token, bodyJson);
+    const base = buildUploadResultBase(url, brandId, siteId, menuId, scenario, menuBody);
+    const uploadResult = parseMenuUploadResult(deliveroo);
+    const result: UploadMenuResult = {
+      ...base,
+      matchExistingMenu: uploadResult.matchExistingMenu,
+      result: uploadResult.result,
+      deliveroo,
+      bodySource,
+      menuRevision: revision,
+      storedMenuSha256,
+      uploadBodySha256,
+      payloadDiffersFromStored
+    };
+
+    console.log(
+      JSON.stringify({
+        msg: "deliveroo.menu.upload",
+        method: result.method,
+        url: result.url,
+        brandId: result.brandId,
+        siteId: result.siteId,
+        menuId: result.menuId,
+        scenario: result.scenario,
+        bodySource: result.bodySource,
+        matchExistingMenu: result.matchExistingMenu,
+        result: result.result,
+        payloadDiffersFromStored: result.payloadDiffersFromStored,
+        menuRevision: result.menuRevision
+      })
+    );
+
+    return result;
   } else {
     const body =
       options?.payload ?? buildMenuPayload(menuId, siteId, scenario, menuRevision);

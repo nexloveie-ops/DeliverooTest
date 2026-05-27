@@ -103,6 +103,7 @@ const handleMenuUpload = async (
     doubleUpload?: boolean;
     delayMs?: number;
     generateMenuId?: boolean;
+    webhookBodyStrategy?: "template" | "mutate" | "auto";
   },
   res: express.Response
 ): Promise<void> => {
@@ -111,10 +112,15 @@ const handleMenuUpload = async (
     res.json({
       ok: true,
       matchExistingMenu: put.matchExistingMenu,
+      payloadDiffersFromStored: put.payloadDiffersFromStored,
       put,
       hint:
         put.scenario === "webhook"
-          ? "Scenario 6: use a NEW menu_id in the Portal (or generateMenuId). Webhook URL must point to /webhooks/deliveroo. Avoid MATCH_EXISTING_MENU — then poll GET /deliveroo/menu/webhook-status?menuId=..."
+          ? put.matchExistingMenu
+            ? "Scenario 6: Deliveroo returned MATCH_EXISTING_MENU — click Start in the Portal, then upload again within 30s (or omit menuId to generate a new one)."
+            : put.payloadDiffersFromStored === false
+              ? "Scenario 6: PUT body matched the stored menu — retry upload after Start."
+              : "Scenario 6: Click Start, upload within 30s with the same menu_id. Webhook URL → POST /webhooks/deliveroo (200). Poll GET /deliveroo/menu/webhook-status?menuId=..."
           : put.scenario === "nochange"
             ? put.doubleUpload
               ? "Scenario 5: two identical PUTs using GET menu JSON (Deliveroo canonical form). Call only ONCE per Start with double:true."
@@ -146,6 +152,7 @@ const readUploadParams = (
   doubleUpload?: boolean;
   delayMs?: number;
   generateMenuId?: boolean;
+  webhookBodyStrategy?: "template" | "mutate" | "auto";
 } => {
   const q = (key: string): string | undefined => {
     const value = query[key];
@@ -183,8 +190,25 @@ const readUploadParams = (
   const generateMenuId =
     q("generateMenuId") === "true" ||
     body?.generateMenuId === true;
+  const strategyRaw =
+    q("webhookBodyStrategy") ??
+    (typeof body?.webhookBodyStrategy === "string" ? body.webhookBodyStrategy : undefined);
+  const webhookBodyStrategy =
+    strategyRaw === "template" || strategyRaw === "mutate" || strategyRaw === "auto"
+      ? strategyRaw
+      : undefined;
 
-  return { menuId, siteId, siteDrnId, scenario, payload, doubleUpload, delayMs, generateMenuId };
+  return {
+    menuId,
+    siteId,
+    siteDrnId,
+    scenario,
+    payload,
+    doubleUpload,
+    delayMs,
+    generateMenuId,
+    webhookBodyStrategy
+  };
 };
 
 app.get("/deliveroo/menu/webhook-status", (req, res) => {

@@ -40,8 +40,33 @@ const revisionPriceBump = (revision: string): number => {
   return (parseInt(revision.slice(-6), 36) % 400) + 17;
 };
 
+const SERVER_ONLY_MENU_KEYS = new Set([
+  "drn_id",
+  "currency_code",
+  "is_pos_integrated",
+  "ian",
+  "repeatable"
+]);
+
 const toRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+/** Remove GET-only fields before PUT so Deliveroo treats the body as a real update. */
+export const stripServerFieldsFromMenu = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(stripServerFieldsFromMenu);
+  }
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+  const obj = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(obj)) {
+    if (SERVER_ONLY_MENU_KEYS.has(key)) continue;
+    out[key] = stripServerFieldsFromMenu(nested);
+  }
+  return out;
+};
 
 /**
  * Mutate a GET menu (canonical shape) so PUT differs from the live menu — Scenario 6.
@@ -56,7 +81,8 @@ export const applyWebhookRevision = (
 
   for (const raw of items) {
     const item = toRecord(raw);
-    if (item.type !== "ITEM") continue;
+    const itemType = item.type;
+    if (itemType !== "ITEM" && itemType !== "BUNDLE" && itemType !== "CHOICE") continue;
 
     const priceInfo = toRecord(item.price_info);
     const basePrice = typeof priceInfo.price === "number" ? priceInfo.price : 1000;
@@ -70,6 +96,15 @@ export const applyWebhookRevision = (
     description.en = `Sandbox item updated at ${revision}`;
 
     item.external_data = `webhook-rev-${revision}`;
+  }
+
+  const categories = Array.isArray(menu.categories) ? menu.categories : [];
+  for (const raw of categories) {
+    const category = toRecord(raw);
+    const name = toRecord(category.name);
+    if (typeof name.en === "string") {
+      name.en = `${name.en} (${revision.slice(-6)})`;
+    }
   }
 
   const mealtimes = Array.isArray(menu.mealtimes) ? menu.mealtimes : [];
@@ -118,26 +153,60 @@ export const buildWebhookScenarioPayload = (
   revision: string = String(Date.now())
 ): Record<string, unknown> => buildMealtimesScenarioPayload(menuId, siteId, revision);
 
-/** Build PUT body for Scenario 6 from live menu when possible. */
+export type WebhookUploadBodyStrategy = "template" | "mutate" | "auto";
+
+/**
+ * Scenario 6 PUT body. Default `auto` uses the mealtimes template (revision bump) so the
+ * payload always differs from a stored GET menu (bundles, mealtimes, or canonical replay).
+ */
 export const buildWebhookUploadBody = (
   menuId: string,
   siteId: string,
   revision: string,
-  currentMenuJson?: string
+  currentMenuJson?: string,
+  strategy: WebhookUploadBodyStrategy = "auto"
 ): string => {
-  if (currentMenuJson) {
+  const templateJson = JSON.stringify(buildWebhookScenarioPayload(menuId, siteId, revision));
+
+  if (strategy === "template" || !currentMenuJson) {
+    return templateJson;
+  }
+
+  if (strategy === "mutate") {
     try {
       const current = JSON.parse(currentMenuJson) as Record<string, unknown>;
-      const mutated = applyWebhookRevision(current, revision);
+      const stripped = stripServerFieldsFromMenu(current) as Record<string, unknown>;
+      const mutated = applyWebhookRevision(stripped, revision);
       const mutatedJson = JSON.stringify(mutated);
-      if (mutatedJson !== currentMenuJson) {
+      const strippedStored = JSON.stringify(stripServerFieldsFromMenu(JSON.parse(currentMenuJson)));
+      if (mutatedJson !== currentMenuJson && mutatedJson !== strippedStored) {
         return mutatedJson;
       }
     } catch {
-      // fall through to template
+      // fall through
     }
+    return templateJson;
   }
-  return JSON.stringify(buildWebhookScenarioPayload(menuId, siteId, revision));
+
+  // auto: template unless byte-identical to stored menu (extremely rare)
+  try {
+    const strippedStored = JSON.stringify(
+      stripServerFieldsFromMenu(JSON.parse(currentMenuJson))
+    );
+    if (templateJson !== currentMenuJson && templateJson !== strippedStored) {
+      return templateJson;
+    }
+    const current = JSON.parse(currentMenuJson) as Record<string, unknown>;
+    const mutatedJson = JSON.stringify(
+      applyWebhookRevision(stripServerFieldsFromMenu(current) as Record<string, unknown>, revision)
+    );
+    if (mutatedJson !== currentMenuJson && mutatedJson !== strippedStored) {
+      return mutatedJson;
+    }
+  } catch {
+    // fall through
+  }
+  return templateJson;
 };
 
 /**

@@ -6,6 +6,16 @@
 
 const TAX_IE = "13.5";
 
+/** Required on menu object for V3 / async processing (IE sandbox). */
+export const DEFAULT_MENU_CURRENCY_CODE = "EUR";
+
+const ensureMenuCurrencyCode = (menu: Record<string, unknown>): void => {
+  const existing = menu.currency_code;
+  if (typeof existing !== "string" || existing.trim().length === 0) {
+    menu.currency_code = DEFAULT_MENU_CURRENCY_CODE;
+  }
+};
+
 const itemBase = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
   allergies: [],
   classifications: [],
@@ -211,14 +221,11 @@ export const buildScenario13LargeMenuPayload = (
 
   const mealtimeId = "s13-meal-all-day";
 
-  return {
-    name: menuId,
-    site_ids: [siteId],
-    menu: {
-      categories,
-      items,
-      modifiers: [],
-      mealtimes: [
+  const menu: Record<string, unknown> = {
+    categories,
+    items,
+    modifiers: [],
+    mealtimes: [
         {
           id: mealtimeId,
           name: { en: "All Day Menu" },
@@ -233,7 +240,13 @@ export const buildScenario13LargeMenuPayload = (
           }))
         }
       ]
-    }
+  };
+  ensureMenuCurrencyCode(menu);
+
+  return {
+    name: menuId,
+    site_ids: [siteId],
+    menu
   };
 };
 
@@ -346,11 +359,19 @@ export const extendMenuToScenario13 = (
       mealtimes[m] = meal;
     }
 
+    const menuSection: Record<string, unknown> = {
+      ...menu,
+      items,
+      categories,
+      mealtimes,
+      modifiers: menu.modifiers ?? []
+    };
+    ensureMenuCurrencyCode(menuSection);
     const root = {
       ...stripped,
       name: menuId,
       site_ids: [siteId],
-      menu: { ...menu, items, categories, mealtimes, modifiers: menu.modifiers ?? [] }
+      menu: menuSection
     };
     return applyScenario13Revision(root, revision);
   } catch {
@@ -438,11 +459,8 @@ export const buildMinimalWebhookScenarioPayload = (
   const categoryId = "webhook-cat-1";
   const mealtimeId = "webhook-meal-1";
 
-  return {
-    name: menuId,
-    site_ids: [siteId],
-    menu: {
-      categories: [{ id: categoryId, name: { en: "Main" }, item_ids: [itemId] }],
+  const menu: Record<string, unknown> = {
+    categories: [{ id: categoryId, name: { en: "Main" }, item_ids: [itemId] }],
       items: [
         itemBase({
           id: itemId,
@@ -470,7 +488,13 @@ export const buildMinimalWebhookScenarioPayload = (
           }))
         }
       ]
-    }
+  };
+  ensureMenuCurrencyCode(menu);
+
+  return {
+    name: menuId,
+    site_ids: [siteId],
+    menu
   };
 };
 

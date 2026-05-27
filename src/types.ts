@@ -111,6 +111,13 @@ export type Scenario11GetResult = ItemUnavailabilitiesResult & {
   expectedAfterMorningReset: ReplaceAllUnavailabilitiesPayload;
 };
 
+export type Scenario12PostResult = Scenario11PostResult;
+
+export type Scenario12GetResult = ItemUnavailabilitiesResult & {
+  parsed: ReplaceAllUnavailabilitiesPayload;
+  expectedAfterSiteOpen: ReplaceAllUnavailabilitiesPayload;
+};
+
 export type UploadMenuResult = {
   method: "PUT";
   url: string;

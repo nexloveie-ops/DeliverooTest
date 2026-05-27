@@ -25,6 +25,8 @@ import type {
   Scenario10PutResult,
   Scenario11GetResult,
   Scenario11PostResult,
+  Scenario12GetResult,
+  Scenario12PostResult,
   UploadMenuResult
 } from "./types.js";
 
@@ -558,6 +560,23 @@ export const SCENARIO11_INITIAL_POST: ItemUnavailabilityUpdate[] = [
 export const SCENARIO11_AFTER_MORNING_RESET: ReplaceAllUnavailabilitiesPayload = {
   unavailable_ids: [],
   hidden_ids: ["orange_juice"]
+};
+
+/** Scenario 12: Portal sets orange_juice unavailable on Start (for GET validation). */
+export const SCENARIO12_PORTAL_INITIAL: ReplaceAllUnavailabilitiesPayload = {
+  unavailable_ids: ["orange_juice"],
+  hidden_ids: []
+};
+
+/** Scenario 12: partner POST after midnight — whole_milk unavailable. */
+export const SCENARIO12_USER_POST: ItemUnavailabilityUpdate[] = [
+  { item_id: "whole_milk", status: "unavailable" }
+];
+
+/** Expected GET after site open with no morning reset (stock unchanged). */
+export const SCENARIO12_AFTER_SITE_OPEN: ReplaceAllUnavailabilitiesPayload = {
+  unavailable_ids: ["orange_juice", "whole_milk"],
+  hidden_ids: []
 };
 
 const isItemAvailabilityStatus = (value: unknown): value is ItemAvailabilityStatus =>
@@ -1175,6 +1194,77 @@ export const runScenario11Unavailabilities = async (
       ...getResult,
       parsed,
       expectedAfterMorningReset: SCENARIO11_AFTER_MORNING_RESET
+    };
+  }
+
+  return out;
+};
+
+export const validateScenario12AfterSiteOpen = (
+  parsed: ReplaceAllUnavailabilitiesPayload
+): string[] => {
+  const warnings: string[] = [];
+  if (!parsed.unavailable_ids.includes("orange_juice")) {
+    warnings.push("After site open (no reset): orange_juice should stay unavailable.");
+  }
+  if (!parsed.unavailable_ids.includes("whole_milk")) {
+    warnings.push("After site open (no reset): whole_milk should stay unavailable.");
+  }
+  if (parsed.unavailable_ids.includes("granola") || parsed.hidden_ids.includes("granola")) {
+    warnings.push("After site open (no reset): granola should remain available.");
+  }
+  return warnings;
+};
+
+export const runScenario12Unavailabilities = async (
+  options?: UnavailabilitySiteOptions & { step?: "post" | "get" | "both" }
+): Promise<{
+  post?: Scenario12PostResult;
+  get?: Scenario12GetResult;
+  getWarnings?: string[];
+  diagnose?: Scenario9Diagnose;
+}> => {
+  const step = options?.step ?? "post";
+  if (!options?.menuId?.trim()) {
+    throw new Error(
+      "menuId is required for Scenario 12 (v1 POST .../menus/{menuId}/item_unavailabilities/{siteId})"
+    );
+  }
+  const siteOpts: UnavailabilitySiteOptions = {
+    siteId: options.siteId,
+    siteDrnId: options.siteDrnId,
+    menuId: options.menuId,
+    apiVersion: "v1"
+  };
+  const out: {
+    post?: Scenario12PostResult;
+    get?: Scenario12GetResult;
+    getWarnings?: string[];
+    diagnose?: Scenario9Diagnose;
+  } = {};
+
+  const diagnose = await diagnoseScenario9Context(siteOpts);
+  out.diagnose = diagnose;
+
+  if (step === "post" || step === "both") {
+    const result = await updateItemUnavailabilities(SCENARIO12_USER_POST, siteOpts);
+    out.post = {
+      ...result,
+      itemUnavailabilities: SCENARIO12_USER_POST
+    };
+  }
+
+  if (step === "get" || step === "both") {
+    if (step === "both") {
+      await sleep(SCENARIO8_RATE_LIMIT_MS);
+    }
+    const getResult = await getItemUnavailabilities(siteOpts);
+    const parsed = parseReplaceAllUnavailabilities(getResult.deliveroo);
+    out.getWarnings = validateScenario12AfterSiteOpen(parsed);
+    out.get = {
+      ...getResult,
+      parsed,
+      expectedAfterSiteOpen: SCENARIO12_AFTER_SITE_OPEN
     };
   }
 

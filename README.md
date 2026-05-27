@@ -36,6 +36,7 @@ Use **API Suite** sandbox credentials in Cloud Run — not “Credentials for Sc
 | POST | `/deliveroo/menu/scenario9` | Scenario 9: GET then PUT replace-all (`step=get`, `put`, or `both`) |
 | POST | `/deliveroo/menu/scenario10` | Scenario 10: GET then PUT reset stock (`step=get`, `put`, or `both`) |
 | POST | `/deliveroo/menu/scenario11` | Scenario 11: POST initial unavailabilities (`step=post`, default) |
+| POST | `/deliveroo/menu/scenario12` | Scenario 12: POST whole_milk unavailable after Start (`step=post`) |
 | POST | `/webhooks/deliveroo` | Order events + `menu.upload_result` |
 
 ### Menu upload (`/deliveroo/menu/upload`)
@@ -127,6 +128,14 @@ curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario11?step=post" \
 
 # Optional: after Portal finishes morning-reset simulation:
 curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario11?step=get" \
+  -H "Content-Type: application/json" \
+  -d '{"menuId":"<portal-menu-id>","site_drn_id":"607326a3-ef2d-4b8b-b013-a91c52c3954f"}'
+```
+
+**Scenario 12:** Portal **Start** → system marks `orange_juice` unavailable. You **POST** `whole_milk` unavailable (treated as **after midnight**). Morning stock reset is **skipped**; when site opens, stock stays: `orange_juice` + `whole_milk` unavailable, `granola` available.
+
+```bash
+curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario12?step=post" \
   -H "Content-Type: application/json" \
   -d '{"menuId":"<portal-menu-id>","site_drn_id":"607326a3-ef2d-4b8b-b013-a91c52c3954f"}'
 ```

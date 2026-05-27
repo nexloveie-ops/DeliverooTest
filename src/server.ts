@@ -11,6 +11,7 @@ import {
   runScenario9Unavailabilities,
   runScenario10Unavailabilities,
   runScenario11Unavailabilities,
+  runScenario12Unavailabilities,
   updateItemUnavailabilities,
   uploadDeliverooMenu
 } from "./deliveroo.js";
@@ -575,6 +576,48 @@ app.post("/deliveroo/menu/scenario11", async (req, res) => {
           : step === "get"
             ? "Scenario 11 GET: verify granola available, orange_juice still hidden after morning reset."
             : "Scenario 11: POST initial state then GET (optional check)."
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    res.status(500).json({ ok: false, error: message, detail: deliverooAxiosDetail(error) });
+  }
+});
+
+app.post("/deliveroo/menu/scenario12", async (req, res) => {
+  const body = req.body as Record<string, unknown>;
+  const siteParams = readUnavailabilitySiteParams(req.query, body);
+  const step = parseScenario11Step(req.query, body);
+  if (!siteParams.menuId) {
+    res.status(400).json({
+      ok: false,
+      error: "menuId is required for Scenario 12 (same menu_id as Portal)"
+    });
+    return;
+  }
+  try {
+    const result = await runScenario12Unavailabilities({ ...siteParams, step });
+    res.json({
+      ok: true,
+      step,
+      menuId: siteParams.menuId,
+      portalInitialState: {
+        orange_juice: "unavailable (set by Portal on Start)"
+      },
+      partnerPost: [{ item_id: "whole_milk", status: "unavailable" }],
+      expectedAfterSiteOpen: {
+        orange_juice: "unavailable (unchanged — no morning reset)",
+        whole_milk: "unavailable (unchanged)",
+        granola: "available"
+      },
+      getWarnings: result.getWarnings,
+      diagnose: result.diagnose,
+      ...result,
+      hint:
+        step === "post"
+          ? "Scenario 12: POST whole_milk unavailable after Start (after-midnight sim). Morning reset skipped; stock unchanged when site opens."
+          : step === "get"
+            ? "Scenario 12 GET: verify orange_juice + whole_milk still unavailable, granola available."
+            : "Scenario 12: POST whole_milk then optional GET."
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";

@@ -517,11 +517,9 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
         throw error;
       }
     }
-    // Default template (clean 100 items); use ?preferGet=true to extend Portal GET menu.
-    const preferTemplate =
-      options?.scenario13PreferGet !== true && options?.scenario13PreferTemplate !== false;
+    // Default: clean 100-item template. Only use GET extend when ?preferGet=true.
     const built = buildScenario13MenuJson(menuId, siteId, revision, currentMenuJson, {
-      preferTemplate
+      preferGet: options?.scenario13PreferGet === true
     });
     bodySource =
       built.source === "get-extended" || built.source === "get-revision" ? "get" : "template";

@@ -365,9 +365,9 @@ export const buildScenario13MenuJson = (
   siteId: string,
   revision: string,
   currentMenuJson?: string,
-  options?: { preferTemplate?: boolean }
+  options?: { preferGet?: boolean }
 ): { bodyJson: string; source: Scenario13BodySource; itemCount: number } => {
-  if (currentMenuJson && !options?.preferTemplate) {
+  if (currentMenuJson && options?.preferGet === true) {
     try {
       const stripped = stripServerFieldsFromMenu(
         JSON.parse(currentMenuJson)

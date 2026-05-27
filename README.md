@@ -145,7 +145,7 @@ curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario12?step=post" \
 
 **Scenario 13:** Do **not** send unavailabilities until **`menu.upload_result`** webhook arrives (unless upload returned `MATCH_EXISTING_MENU`). Flow: **Start** → upload menu with **≥100 items** → wait for webhook (~1 min) → **POST** item unavailabilities.
 
-By default Scenario 13 uses **Menu V3** (presigned S3 → publish job → same `menu.upload_result` webhook). Use `?uploadApi=v1` to force the legacy v1 PUT.
+By default Scenario 13 uses **Menu V3** (presigned S3 → publish job → same `menu.upload_result` webhook) and a **clean template** payload (`bodySource: template`). Use `?preferGet=true` only if you must extend the Portal GET menu; `?uploadApi=v1` forces legacy v1 PUT.
 
 ```bash
 # All-in-one (blocks up to 90s waiting for webhook on this Cloud Run instance):

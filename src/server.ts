@@ -292,7 +292,11 @@ const handleMenuUpload = async (
         ? (error as { response: { data: unknown } }).response.data
         : undefined;
     const message = error instanceof Error ? error.message : "unknown error";
-    res.status(500).json({ ok: false, error: message, detail: axiosDetail });
+    res.status(500).json({
+      ok: false,
+      error: message,
+      detail: axiosDetail ?? (message.includes("upload_url") ? message : undefined)
+    });
   }
 };
 

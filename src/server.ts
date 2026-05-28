@@ -12,6 +12,7 @@ import {
   runScenario10Unavailabilities,
   runScenario11Unavailabilities,
   runScenario12Unavailabilities,
+  generateMenuV3S3UploadUrl,
   runScenario13MenuAndUnavailabilities,
   SCENARIO13_UNAVAILABILITY_POST,
   updateItemUnavailabilities,
@@ -435,6 +436,52 @@ const readUploadParams = (
     scenario13OmitCover
   };
 };
+
+const handleScenario14S3UploadUrl = async (
+  req: express.Request,
+  res: express.Response
+): Promise<void> => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const menuId =
+    (typeof req.query.menuId === "string" ? req.query.menuId : undefined) ??
+    (typeof req.query.menu_id === "string" ? req.query.menu_id : undefined) ??
+    (typeof body.menuId === "string" ? body.menuId : undefined) ??
+    (typeof body.menu_id === "string" ? body.menu_id : undefined);
+  const siteId =
+    (typeof req.query.siteId === "string" ? req.query.siteId : undefined) ??
+    (typeof body.siteId === "string" ? body.siteId : undefined);
+  const siteDrnId =
+    (typeof req.query.siteDrnId === "string" ? req.query.siteDrnId : undefined) ??
+    (typeof req.query.site_drn_id === "string" ? req.query.site_drn_id : undefined) ??
+    (typeof body.siteDrnId === "string" ? body.siteDrnId : undefined) ??
+    (typeof body.site_drn_id === "string" ? body.site_drn_id : undefined);
+
+  if (!menuId) {
+    res.status(400).json({
+      ok: false,
+      error: "menuId is required for Scenario 14 (same menu_id as Portal Start)"
+    });
+    return;
+  }
+
+  try {
+    const result = await generateMenuV3S3UploadUrl({ menuId, siteId, siteDrnId });
+    res.json({
+      ok: true,
+      scenario: 14,
+      ...result,
+      hint:
+        "Scenario 14 only requires this PUT (presigned S3 URL). Reuse the same menu_id for later [MENU V3 APIs] scenarios. Full upload: POST /deliveroo/menu/upload?scenario=scenario13."
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    res.status(500).json({ ok: false, error: message, detail: deliverooAxiosDetail(error) });
+  }
+};
+
+/** Scenario 14: Menu V3 Generate S3 upload URL (PUT only). */
+app.put("/deliveroo/menu/scenario14", handleScenario14S3UploadUrl);
+app.post("/deliveroo/menu/scenario14", handleScenario14S3UploadUrl);
 
 /** Scenario 13: inspect template payload without calling Deliveroo. */
 app.get("/deliveroo/menu/scenario13/diagnose", (req, res) => {

@@ -121,6 +121,19 @@ export type Scenario12GetResult = ItemUnavailabilitiesResult & {
 
 export type Scenario13PostResult = Scenario11PostResult;
 
+/** Scenario 14: Menu V3 PUT presign only (Generate S3 upload URL). */
+export type Scenario14S3UploadUrlResult = {
+  method: "PUT";
+  url: string;
+  brandId: string;
+  siteId: string;
+  menuId: string;
+  /** Presigned URL from Deliveroo (`upload_url` or `s3_url`). */
+  uploadUrl: string;
+  version?: string;
+  deliveroo: unknown;
+};
+
 export type Scenario13RunResult = {
   upload?: UploadMenuResult;
   webhookWait?: {

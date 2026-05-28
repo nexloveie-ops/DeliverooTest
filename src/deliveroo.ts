@@ -13,7 +13,7 @@ import {
   SCENARIO13_ITEM_COUNT,
   type WebhookUploadBodyStrategy
 } from "./menuPayloads.js";
-import { runMenuV3Upload } from "./deliverooMenuV3.js";
+import { createMenuV3PresignedUpload, runMenuV3Upload } from "./deliverooMenuV3.js";
 import { diagnoseScenario13Payload } from "./scenario13Diagnose.js";
 import { waitForMenuUploadWebhook } from "./menuWebhookStore.js";
 import type {
@@ -35,6 +35,7 @@ import type {
   Scenario12PostResult,
   Scenario13PostResult,
   Scenario13RunResult,
+  Scenario14S3UploadUrlResult,
   UploadMenuResult
 } from "./types.js";
 
@@ -1390,6 +1391,54 @@ export const runScenario12Unavailabilities = async (
   }
 
   return out;
+};
+
+/**
+ * Scenario 14: PUT /menu/v3/brands/{brand_id}/menus/{menu_id} — generate S3 upload URL only.
+ * Use the same menu_id as Portal; later V3 scenarios reuse it.
+ */
+export const generateMenuV3S3UploadUrl = async (options?: {
+  menuId?: string;
+  siteId?: string;
+  siteDrnId?: string;
+}): Promise<Scenario14S3UploadUrlResult> => {
+  if (!options?.menuId?.trim()) {
+    throw new Error("menuId is required for Scenario 14 (same menu_id as Portal)");
+  }
+  const token = await getAccessToken();
+  const context = await resolveSiteContext(token, {
+    siteId: options.siteId,
+    siteDrnId: options.siteDrnId
+  });
+  const menuId = options.menuId.trim();
+  const presign = await createMenuV3PresignedUpload(context.brandId, menuId, token);
+  if (!presign.s3Url) {
+    throw new Error(
+      `Menu V3 presign missing upload_url: ${JSON.stringify(presign.deliveroo)}`
+    );
+  }
+
+  console.log(
+    JSON.stringify({
+      msg: "deliveroo.menu.v3.presign",
+      brandId: context.brandId,
+      siteId: context.siteId,
+      menuId: presign.menuId,
+      version: presign.version,
+      hasUploadUrl: Boolean(presign.s3Url)
+    })
+  );
+
+  return {
+    method: "PUT",
+    url: presign.url,
+    brandId: context.brandId,
+    siteId: context.siteId,
+    menuId: presign.menuId,
+    uploadUrl: presign.s3Url,
+    version: presign.version,
+    deliveroo: presign.deliveroo
+  };
 };
 
 /** Scenario 13: first large-menu item marked unavailable after upload webhook. */

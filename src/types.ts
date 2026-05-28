@@ -154,6 +154,18 @@ export type Scenario13RunResult = {
   error?: string;
 };
 
+/** Scenario 17: GET /menu/v3/brands/{brand_id}/menus/{menu_id}. */
+export type Scenario17FetchMenuResult = {
+  method: "GET";
+  url: string;
+  brandId: string;
+  siteId: string;
+  menuId: string;
+  s3Url?: string;
+  version?: string;
+  deliveroo: unknown;
+};
+
 /** Scenario 16: GET /menu/v3/brands/{brand_id}/jobs/{job_id}. */
 export type Scenario16JobStatusResult = {
   method: "GET";

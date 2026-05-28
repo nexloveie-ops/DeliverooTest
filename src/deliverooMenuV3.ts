@@ -21,6 +21,14 @@ export type MenuV3PresignResult = {
   version?: string;
 };
 
+export type MenuV3FetchMenuResult = {
+  url: string;
+  deliveroo: unknown;
+  menuId: string;
+  s3Url?: string;
+  version?: string;
+};
+
 export type MenuV3S3UploadResult = {
   ok: boolean;
   httpStatus: number;
@@ -50,6 +58,32 @@ const authHeaders = (token: string): Record<string, string> => ({
   Authorization: `Bearer ${token}`,
   Accept: "application/json"
 });
+
+/** GET /menu/v3/brands/{brand}/menus/{id} — fetch menu metadata (S3 URL, version, jobs). */
+export const getMenuV3Async = async (
+  brandId: string,
+  menuId: string,
+  token: string
+): Promise<MenuV3FetchMenuResult> => {
+  const url = `${config.deliverooBaseUrl}/menu/v3/brands/${brandId}/menus/${menuId}`;
+  const response = await axios.get(url, {
+    headers: authHeaders(token),
+    timeout: 20000
+  });
+  const data = response.data;
+  const record = toRecord(data);
+  const s3Url =
+    asString(record.upload_url) ??
+    asString(record.s3_url) ??
+    asString(record.download_url);
+  return {
+    url,
+    deliveroo: data,
+    menuId: asString(record.id) ?? menuId,
+    s3Url,
+    version: asString(record.version)
+  };
+};
 
 /** PUT /menu/v3/brands/{brand}/menus/{id} — presigned S3 URL (no body). */
 export const createMenuV3PresignedUpload = async (

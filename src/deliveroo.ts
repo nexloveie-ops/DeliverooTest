@@ -16,6 +16,7 @@ import {
 } from "./menuPayloads.js";
 import {
   createMenuV3PresignedUpload,
+  getMenuV3Async,
   getMenuV3JobStatus,
   runMenuV3Upload
 } from "./deliverooMenuV3.js";
@@ -43,6 +44,7 @@ import type {
   Scenario14S3UploadUrlResult,
   Scenario15RunResult,
   Scenario16JobStatusResult,
+  Scenario17FetchMenuResult,
   UploadMenuResult
 } from "./types.js";
 
@@ -1581,6 +1583,58 @@ export const fetchScenario16MenuV3JobStatus = async (options?: {
     brandId,
     jobId,
     status: result.status,
+    deliveroo: result.deliveroo
+  };
+};
+
+/**
+ * Scenario 17: GET /menu/v3/brands/{brand_id}/menus/{menu_id} — fetch menu (async V3).
+ * Use the same menu_id as Scenarios 14–15.
+ */
+export const fetchScenario17MenuV3Async = async (options?: {
+  menuId?: string;
+  siteId?: string;
+  siteDrnId?: string;
+  brandId?: string;
+}): Promise<Scenario17FetchMenuResult> => {
+  if (!options?.menuId?.trim()) {
+    throw new Error("menuId is required for Scenario 17 (same menu_id as Portal)");
+  }
+  const menuId = options.menuId.trim();
+  const token = await getAccessToken();
+
+  let brandId = options.brandId?.trim();
+  let siteId = options.siteId?.trim();
+  if (!brandId || !siteId) {
+    const context = await resolveSiteContext(token, {
+      siteId: options.siteId,
+      siteDrnId: options.siteDrnId
+    });
+    brandId = brandId ?? context.brandId;
+    siteId = siteId ?? context.siteId;
+  }
+
+  const result = await getMenuV3Async(brandId, menuId, token);
+
+  console.log(
+    JSON.stringify({
+      msg: "deliveroo.menu.scenario17.fetch",
+      brandId,
+      siteId,
+      menuId: result.menuId,
+      version: result.version,
+      hasS3Url: Boolean(result.s3Url)
+    })
+  );
+
+  return {
+    method: "GET",
+    url: result.url,
+    brandId,
+    siteId,
+    menuId: result.menuId,
+    s3Url: result.s3Url,
+    version: result.version,
     deliveroo: result.deliveroo
   };
 };

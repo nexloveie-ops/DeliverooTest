@@ -41,6 +41,7 @@ Use **API Suite** sandbox credentials in Cloud Run — not “Credentials for Sc
 | PUT/POST | `/deliveroo/menu/scenario14` | Scenario 14: Menu V3 **Generate S3 upload URL** only (`PUT .../menu/v3/brands/{brand}/menus/{id}`) |
 | POST | `/deliveroo/menu/scenario15` | Scenario 15: Menu V3 async upload (S3 + publish job + `menu.upload_result` webhook) |
 | GET/POST | `/deliveroo/menu/scenario16` | Scenario 16: Menu V3 **GET job status** (`.../brands/{brand}/jobs/{job_id}`) |
+| GET/POST | `/deliveroo/menu/scenario17` | Scenario 17: Menu V3 **GET menu** (`.../brands/{brand}/menus/{menu_id}`) |
 | POST | `/webhooks/deliveroo` | Order events + `menu.upload_result` |
 
 ### Menu upload (`/deliveroo/menu/upload`)
@@ -187,6 +188,14 @@ curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario16" \
 ```
 
 Official endpoint: `GET {DELIVEROO_BASE_URL}/menu/v3/brands/{brand_id}/jobs/{job_id}` ([Fetch Job Status](https://api-docs.deliveroo.com/reference/get_v3-brands-brand-id-jobs-job-id)).
+
+**Scenario 17 ([MENU V3 APIs]):** Portal checks **GET menu** with `brand_id` + `menu_id` (same `menu_id` as Scenarios 14–15). Returns menu metadata including S3 download URL and version.
+
+```bash
+curl "https://<cloud-run-url>/deliveroo/menu/scenario17?menuId=<portal-menu-id>&site_drn_id=607326a3-ef2d-4b8b-b013-a91c52c3954f"
+```
+
+Official endpoint: `GET {DELIVEROO_BASE_URL}/menu/v3/brands/{brand_id}/menus/{menu_id}` ([Fetch Menu](https://api-docs.deliveroo.com/reference/get_v3-brands-brand-id-menus-id)).
 
 **Scenario 13:** Do **not** send unavailabilities until **`menu.upload_result`** webhook arrives (unless upload returned `MATCH_EXISTING_MENU`). Flow: **Start** → upload menu with **≥100 items** → wait for webhook (~1 min) → **POST** item unavailabilities.
 

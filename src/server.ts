@@ -16,6 +16,7 @@ import {
   runScenario13MenuAndUnavailabilities,
   runScenario15MenuV3Async,
   fetchScenario16MenuV3JobStatus,
+  fetchScenario17MenuV3Async,
   SCENARIO13_UNAVAILABILITY_POST,
   updateItemUnavailabilities,
   uploadDeliverooMenu
@@ -616,6 +617,61 @@ const handleScenario16JobStatus = async (
 
 app.get("/deliveroo/menu/scenario16", handleScenario16JobStatus);
 app.post("/deliveroo/menu/scenario16", handleScenario16JobStatus);
+
+const handleScenario17FetchMenu = async (
+  req: express.Request,
+  res: express.Response
+): Promise<void> => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const menuId =
+    (typeof req.query.menuId === "string" ? req.query.menuId : undefined) ??
+    (typeof req.query.menu_id === "string" ? req.query.menu_id : undefined) ??
+    (typeof body.menuId === "string" ? body.menuId : undefined) ??
+    (typeof body.menu_id === "string" ? body.menu_id : undefined);
+  const siteId =
+    (typeof req.query.siteId === "string" ? req.query.siteId : undefined) ??
+    (typeof body.siteId === "string" ? body.siteId : undefined);
+  const siteDrnId =
+    (typeof req.query.siteDrnId === "string" ? req.query.siteDrnId : undefined) ??
+    (typeof req.query.site_drn_id === "string" ? req.query.site_drn_id : undefined) ??
+    (typeof body.siteDrnId === "string" ? body.siteDrnId : undefined) ??
+    (typeof body.site_drn_id === "string" ? body.site_drn_id : undefined);
+  const brandId =
+    (typeof req.query.brandId === "string" ? req.query.brandId : undefined) ??
+    (typeof req.query.brand_id === "string" ? req.query.brand_id : undefined) ??
+    (typeof body.brandId === "string" ? body.brandId : undefined) ??
+    (typeof body.brand_id === "string" ? body.brand_id : undefined);
+
+  if (!menuId) {
+    res.status(400).json({
+      ok: false,
+      error: "menuId is required for Scenario 17 (same menu_id as Scenarios 14–15)"
+    });
+    return;
+  }
+
+  try {
+    const result = await fetchScenario17MenuV3Async({
+      menuId,
+      siteId,
+      siteDrnId,
+      brandId
+    });
+    res.json({
+      ok: true,
+      scenario: 17,
+      ...result,
+      hint:
+        "Scenario 17 validates GET menu V3. Use same menu_id as prior [MENU V3 APIs] scenarios; download JSON from s3Url if present."
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    res.status(500).json({ ok: false, error: message, detail: deliverooAxiosDetail(error) });
+  }
+};
+
+app.get("/deliveroo/menu/scenario17", handleScenario17FetchMenu);
+app.post("/deliveroo/menu/scenario17", handleScenario17FetchMenu);
 
 /** Scenario 13: inspect template payload without calling Deliveroo. */
 app.get("/deliveroo/menu/scenario13/diagnose", (req, res) => {

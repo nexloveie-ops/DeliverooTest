@@ -9,6 +9,7 @@ import {
   serializeNoChangeMenuBody,
   type MenuScenario,
   buildScenario13MenuJson,
+  buildScenario15MenuJson,
   scenario13ItemId,
   SCENARIO13_ITEM_COUNT,
   type WebhookUploadBodyStrategy
@@ -36,6 +37,7 @@ import type {
   Scenario13PostResult,
   Scenario13RunResult,
   Scenario14S3UploadUrlResult,
+  Scenario15RunResult,
   UploadMenuResult
 } from "./types.js";
 
@@ -1439,6 +1441,97 @@ export const generateMenuV3S3UploadUrl = async (options?: {
     version: presign.version,
     deliveroo: presign.deliveroo
   };
+};
+
+/**
+ * Scenario 15: presign → S3 PUT (within seconds) → POST publish job → menu.upload_result webhook.
+ * Portal "PUT Menu Async" maps to POST .../jobs with action publish_menu_to_live.
+ */
+export const runScenario15MenuV3Async = async (options?: {
+  menuId?: string;
+  siteId?: string;
+  siteDrnId?: string;
+  step?: "upload" | "wait" | "all";
+  webhookTimeoutMs?: number;
+  pollV3Job?: boolean;
+  jobPollTimeoutMs?: number;
+}): Promise<Scenario15RunResult> => {
+  const step = options?.step ?? "all";
+  if (!options?.menuId?.trim()) {
+    throw new Error("menuId is required for Scenario 15 (same menu_id as Portal)");
+  }
+  const menuId = options.menuId.trim();
+  const out: Scenario15RunResult = { menuId };
+
+  if (step === "upload" || step === "all") {
+    const token = await getAccessToken();
+    const context = await resolveSiteContext(token, {
+      siteId: options.siteId,
+      siteDrnId: options.siteDrnId
+    });
+    out.brandId = context.brandId;
+    out.siteId = context.siteId;
+
+    const revision = String(Date.now());
+    const bodyJson = buildScenario15MenuJson(menuId, context.siteId, revision);
+    const v3 = await runMenuV3Upload({
+      brandId: context.brandId,
+      menuId,
+      bodyJson,
+      token,
+      pollJob: options.pollV3Job !== false,
+      jobPollTimeoutMs: options.jobPollTimeoutMs ?? 60_000
+    });
+
+    out.upload = {
+      presignUrl: v3.presign.url,
+      s3HttpStatus: v3.s3Upload.httpStatus,
+      version: v3.presign.version,
+      jobId: v3.publishJob.jobId,
+      jobStatus: v3.jobPoll?.status,
+      jobAttempts: v3.jobPoll?.attempts,
+      bodyJsonBytes: Buffer.byteLength(bodyJson, "utf8")
+    };
+
+    console.log(
+      JSON.stringify({
+        msg: "deliveroo.menu.scenario15.upload",
+        menuId,
+        brandId: context.brandId,
+        siteId: context.siteId,
+        version: v3.presign.version,
+        jobId: v3.publishJob.jobId,
+        jobStatus: v3.jobPoll?.status,
+        s3HttpStatus: v3.s3Upload.httpStatus
+      })
+    );
+  }
+
+  if (step === "wait" || step === "all") {
+    const webhookWait = await waitForMenuUploadWebhook(menuId, {
+      timeoutMs: options?.webhookTimeoutMs ?? 90_000,
+      requireHttp200: true
+    });
+    out.webhookWait = {
+      received: webhookWait.received,
+      waitedMs: webhookWait.waitedMs,
+      latestHttpStatus: webhookWait.latestHttpStatus,
+      events: webhookWait.events.map((e) => ({
+        eventId: e.eventId,
+        httpStatus: e.httpStatus,
+        occurredAt: e.occurredAt,
+        processingError: e.processingError
+      }))
+    };
+    if (!webhookWait.received) {
+      out.error =
+        webhookWait.latestHttpStatus === 500
+          ? "menu.upload_result webhook received but http_status is 500 (menu processing failed on Deliveroo)"
+          : "menu.upload_result webhook not received in time on this instance — poll GET /deliveroo/menu/webhook-status";
+    }
+  }
+
+  return out;
 };
 
 /** Scenario 13: first large-menu item marked unavailable after upload webhook. */

@@ -134,21 +134,41 @@ export type Scenario14S3UploadUrlResult = {
   deliveroo: unknown;
 };
 
+export type MenuWebhookWaitSummary = {
+  received: boolean;
+  waitedMs: number;
+  latestHttpStatus?: number;
+  events: Array<{
+    eventId: string;
+    httpStatus?: number;
+    occurredAt: string;
+    processingError?: string;
+  }>;
+};
+
 export type Scenario13RunResult = {
   upload?: UploadMenuResult;
-  webhookWait?: {
-    received: boolean;
-    waitedMs: number;
-    latestHttpStatus?: number;
-    events: Array<{
-      eventId: string;
-      httpStatus?: number;
-      occurredAt: string;
-      processingError?: string;
-    }>;
-  };
+  webhookWait?: MenuWebhookWaitSummary;
   post?: Scenario13PostResult;
   itemCount?: number;
+  error?: string;
+};
+
+/** Scenario 15: Menu V3 S3 upload + publish job + menu.upload_result webhook. */
+export type Scenario15RunResult = {
+  brandId?: string;
+  siteId?: string;
+  menuId?: string;
+  upload?: {
+    presignUrl: string;
+    s3HttpStatus: number;
+    version?: string;
+    jobId?: string;
+    jobStatus?: string;
+    jobAttempts?: number;
+    bodyJsonBytes: number;
+  };
+  webhookWait?: MenuWebhookWaitSummary;
   error?: string;
 };
 

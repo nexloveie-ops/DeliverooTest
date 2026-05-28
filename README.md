@@ -39,6 +39,7 @@ Use **API Suite** sandbox credentials in Cloud Run — not “Credentials for Sc
 | POST | `/deliveroo/menu/scenario12` | Scenario 12: POST whole_milk unavailable after Start (`step=post`) |
 | POST | `/deliveroo/menu/scenario13` | Scenario 13: upload ≥100 items, wait webhook, POST unavailabilities (`step=all`) |
 | PUT/POST | `/deliveroo/menu/scenario14` | Scenario 14: Menu V3 **Generate S3 upload URL** only (`PUT .../menu/v3/brands/{brand}/menus/{id}`) |
+| POST | `/deliveroo/menu/scenario15` | Scenario 15: Menu V3 async upload (S3 + publish job + `menu.upload_result` webhook) |
 | POST | `/webhooks/deliveroo` | Order events + `menu.upload_result` |
 
 ### Menu upload (`/deliveroo/menu/upload`)
@@ -155,6 +156,23 @@ curl -X PUT "https://<cloud-run-url>/deliveroo/menu/scenario14" \
 Success: `ok: true`, `uploadUrl` (presigned S3 URL), `version`, `url` = Deliveroo PUT endpoint called.
 
 Official endpoint: `PUT {DELIVEROO_BASE_URL}/menu/v3/brands/{brand_id}/menus/{menu_id}` ([Generate S3 URL](https://api-docs.deliveroo.com/reference/put_v3-brands-brand-id-menus-id)).
+
+**Scenario 15 ([MENU V3 APIs]):** After Scenario 14, Portal checks the **full async** path: upload JSON to the presigned S3 URL (expires in **~5 seconds** — our handler does presign → S3 → publish in one request), then trigger processing via **POST** `.../menu/v3/brands/{brand_id}/jobs` (`publish_menu_to_live`; Portal labels this “PUT Menu Async”). Success = **`menu.upload_result`** webhook with **`http_status: 200`**.
+
+Configure **Menu Events** webhook to `POST /webhooks/deliveroo` first. Use the **same `menu_id`** as Scenario 14.
+
+```bash
+# After Portal Start (within ~30s) — presign, S3, publish job, wait webhook up to 90s:
+curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario15" \
+  -H "Content-Type: application/json" \
+  -d '{"menuId":"<portal-menu-id>","site_drn_id":"607326a3-ef2d-4b8b-b013-a91c52c3954f"}'
+
+# Split steps (multi-instance Cloud Run):
+curl -X POST ".../deliveroo/menu/scenario15?step=upload" -H "Content-Type: application/json" -d '{"menuId":"<id>","site_drn_id":"607326a3-ef2d-4b8b-b013-a91c52c3954f"}'
+curl -X POST ".../deliveroo/menu/scenario15?step=wait" -H "Content-Type: application/json" -d '{"menuId":"<id>"}'
+```
+
+Payload includes 1 mealtime (cover + name + description), 1 category (name), 1 item (id, name, operational_name, PLU, description, linked via `category.item_ids`).
 
 **Scenario 13:** Do **not** send unavailabilities until **`menu.upload_result`** webhook arrives (unless upload returned `MATCH_EXISTING_MENU`). Flow: **Start** → upload menu with **≥100 items** → wait for webhook (~1 min) → **POST** item unavailabilities.
 

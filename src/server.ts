@@ -14,6 +14,7 @@ import {
   runScenario12Unavailabilities,
   generateMenuV3S3UploadUrl,
   runScenario13MenuAndUnavailabilities,
+  runScenario15MenuV3Async,
   SCENARIO13_UNAVAILABILITY_POST,
   updateItemUnavailabilities,
   uploadDeliverooMenu
@@ -245,6 +246,19 @@ const parseScenario13Step = (
     (typeof query.step === "string" ? query.step : undefined) ??
     (typeof body?.step === "string" ? body.step : undefined);
   if (raw === "upload" || raw === "wait" || raw === "post" || raw === "all") {
+    return raw;
+  }
+  return "all";
+};
+
+const parseScenario15Step = (
+  query: Record<string, unknown>,
+  body?: Record<string, unknown>
+): "upload" | "wait" | "all" => {
+  const raw =
+    (typeof query.step === "string" ? query.step : undefined) ??
+    (typeof body?.step === "string" ? body.step : undefined);
+  if (raw === "upload" || raw === "wait" || raw === "all") {
     return raw;
   }
   return "all";
@@ -482,6 +496,64 @@ const handleScenario14S3UploadUrl = async (
 /** Scenario 14: Menu V3 Generate S3 upload URL (PUT only). */
 app.put("/deliveroo/menu/scenario14", handleScenario14S3UploadUrl);
 app.post("/deliveroo/menu/scenario14", handleScenario14S3UploadUrl);
+
+app.post("/deliveroo/menu/scenario15", async (req, res) => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const siteParams = readUnavailabilitySiteParams(req.query, body);
+  const step = parseScenario15Step(req.query as Record<string, unknown>, body);
+  const webhookTimeoutMs =
+    typeof req.query.webhookTimeoutMs === "string"
+      ? Number(req.query.webhookTimeoutMs)
+      : typeof body.webhookTimeoutMs === "number"
+        ? body.webhookTimeoutMs
+        : undefined;
+  const pollV3Job =
+    req.query.pollV3Job === "false" || body.pollV3Job === false ? false : undefined;
+  const jobPollTimeoutMs =
+    typeof req.query.jobPollTimeoutMs === "string"
+      ? Number(req.query.jobPollTimeoutMs)
+      : typeof body.jobPollTimeoutMs === "number"
+        ? body.jobPollTimeoutMs
+        : undefined;
+
+  if (!siteParams.menuId) {
+    res.status(400).json({
+      ok: false,
+      error: "menuId is required for Scenario 15 (same menu_id as Portal; complete Scenario 14 first)"
+    });
+    return;
+  }
+
+  try {
+    const result = await runScenario15MenuV3Async({
+      menuId: siteParams.menuId,
+      siteId: siteParams.siteId,
+      siteDrnId: siteParams.siteDrnId,
+      step,
+      webhookTimeoutMs: Number.isFinite(webhookTimeoutMs) ? webhookTimeoutMs : undefined,
+      pollV3Job,
+      jobPollTimeoutMs: Number.isFinite(jobPollTimeoutMs) ? jobPollTimeoutMs : undefined
+    });
+    const webhookOk = result.webhookWait?.received === true;
+    const ok = step === "upload" ? true : step === "wait" ? webhookOk : webhookOk && !result.error;
+    res.status(ok ? 200 : step === "all" && result.webhookWait && !webhookOk ? 504 : 500).json({
+      ok,
+      scenario: 15,
+      step,
+      menuId: siteParams.menuId,
+      ...result,
+      hint:
+        step === "upload"
+          ? "Scenario 15: presign + S3 PUT + publish job done. Poll webhook-status or step=wait for menu.upload_result (httpStatus 200)."
+          : step === "wait"
+            ? "Scenario 15: waiting for menu.upload_result on this Cloud Run instance."
+            : "Scenario 15: full async flow (S3 within seconds of presign, then POST publish job). Portal needs webhook http_status 200."
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    res.status(500).json({ ok: false, error: message, detail: deliverooAxiosDetail(error) });
+  }
+});
 
 /** Scenario 13: inspect template payload without calling Deliveroo. */
 app.get("/deliveroo/menu/scenario13/diagnose", (req, res) => {

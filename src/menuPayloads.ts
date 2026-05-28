@@ -279,6 +279,71 @@ export const buildScenario13LargeMenuPayload = (
   };
 };
 
+/** Scenario 15: mealtime cover (Portal requires cover photo on mealtime). */
+export const SCENARIO15_MEALTIME_COVER_URL = STABLE_MEALTIME_COVER_JPEG_URL;
+
+/**
+ * Scenario 15 minimal menu — Portal checklist:
+ * mealtime (cover, name, description), category (name), item (id, name, operational_name, PLU, description, category link).
+ */
+export const buildScenario15MenuPayload = (
+  menuId: string,
+  siteId: string,
+  revision: string = String(Date.now())
+): Record<string, unknown> => {
+  const revSuffix = revision.slice(-6);
+  const itemId = "s15-item-001";
+  const categoryId = "s15-cat-01";
+  const mealtimeId = "s15-meal-01";
+
+  const menu: Record<string, unknown> = {
+    categories: [
+      {
+        id: categoryId,
+        name: { en: "Main" },
+        description: { en: "Scenario 15 category" },
+        item_ids: [itemId]
+      }
+    ],
+    items: [
+      itemBase({
+        id: itemId,
+        type: "ITEM",
+        name: { en: "Scenario 15 Item" },
+        description: { en: `Sandbox item for async menu upload (rev ${revSuffix})` },
+        operational_name: "s15item001",
+        plu: "S15001",
+        price_info: { price: 999, overrides: [], fees: [] },
+        modifier_ids: []
+      })
+    ],
+    modifiers: [],
+    mealtimes: [
+      {
+        id: mealtimeId,
+        name: { en: "All Day" },
+        description: { en: `Scenario 15 mealtime (rev ${revSuffix})` },
+        category_ids: [categoryId],
+        image: { url: SCENARIO15_MEALTIME_COVER_URL },
+        schedule: []
+      }
+    ]
+  };
+  ensureMenuPublishFields(menu);
+
+  return {
+    name: menuId,
+    site_ids: [siteId],
+    menu
+  };
+};
+
+export const buildScenario15MenuJson = (
+  menuId: string,
+  siteId: string,
+  revision?: string
+): string => JSON.stringify(buildScenario15MenuPayload(menuId, siteId, revision));
+
 const countMenuItems = (menu: Record<string, unknown>): number => {
   const items = Array.isArray(menu.items) ? menu.items : [];
   return items.filter((raw) => toRecord(raw).type === "ITEM").length;

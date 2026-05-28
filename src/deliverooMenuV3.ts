@@ -171,7 +171,12 @@ export const pollMenuV3JobUntilDone = async (
     last = await getMenuV3JobStatus(brandId, jobId, token);
     const status = last.status;
     if (status === "success" || status === "failed") {
-      return { url: last.url, deliveroo: last.deliveroo, status, attempts };
+      return {
+        url: last.url,
+        deliveroo: last.deliveroo,
+        status,
+        attempts
+      };
     }
     await sleep(intervalMs);
   }

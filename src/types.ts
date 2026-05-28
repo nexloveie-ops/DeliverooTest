@@ -30,6 +30,7 @@ export type NormalizedMenuEvent = {
   httpStatus?: number;
   processingError?: string;
   imageErrors?: Array<{ url?: string; message?: string }>;
+  barcodeErrors?: Array<{ barcode?: string; message?: string }>;
   occurredAt: string;
   payload: unknown;
 };
@@ -145,7 +146,13 @@ export type MenuV3UploadSummary = {
   jobStatus?: string;
   jobPollAttempts?: number;
   s3HttpStatus?: number;
+  /** Last GET /v3/.../jobs/{id} body when polling. */
+  jobDeliveroo?: unknown;
 };
+
+import type { Scenario13PayloadDiagnose } from "./scenario13Diagnose.js";
+
+export type { Scenario13PayloadDiagnose };
 
 export type UploadMenuResult = {
   method: "PUT" | "V3";
@@ -183,4 +190,6 @@ export type UploadMenuResult = {
   webhookPayloadShape?: "mutate" | "minimal-template";
   /** Present when uploadPath is v3. */
   v3?: MenuV3UploadSummary;
+  /** Scenario 13: pre-upload payload checks. */
+  payloadDiagnose?: Scenario13PayloadDiagnose;
 };

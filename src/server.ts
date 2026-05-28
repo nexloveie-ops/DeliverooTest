@@ -18,6 +18,7 @@ import {
   uploadDeliverooMenu
 } from "./deliveroo.js";
 import { SCENARIO13_ITEM_COUNT } from "./menuPayloads.js";
+import { buildScenario13PayloadForDiagnose } from "./scenario13Diagnose.js";
 import { forwardToOwnSystem } from "./forwarder.js";
 import type { NormalizedMenuEvent, NormalizedOrderEvent } from "./types.js";
 import {
@@ -150,7 +151,11 @@ const readReplaceAllBody = (body: Record<string, unknown>): ReturnType<typeof pa
 
 const parseMenuUploadErrors = (
   uploadResult: Record<string, unknown>
-): { processingError?: string; imageErrors?: Array<{ url?: string; message?: string }> } => {
+): {
+  processingError?: string;
+  imageErrors?: Array<{ url?: string; message?: string }>;
+  barcodeErrors?: Array<{ barcode?: string; message?: string }>;
+} => {
   const errors = toRecord(uploadResult.errors);
   const processing =
     typeof errors.processing === "string" && errors.processing.length > 0
@@ -165,9 +170,24 @@ const parseMenuUploadErrors = (
       if (url || message) imageErrors.push({ url, message });
     }
   }
+  const barcodeErrors: Array<{ barcode?: string; message?: string }> = [];
+  if (Array.isArray(errors.barcodes)) {
+    for (const raw of errors.barcodes) {
+      const node = toRecord(raw);
+      const barcode =
+        typeof node.barcode === "string"
+          ? node.barcode
+          : typeof node.value === "string"
+            ? node.value
+            : undefined;
+      const message = typeof node.message === "string" ? node.message : undefined;
+      if (barcode || message) barcodeErrors.push({ barcode, message });
+    }
+  }
   return {
     processingError: processing,
-    imageErrors: imageErrors.length > 0 ? imageErrors : undefined
+    imageErrors: imageErrors.length > 0 ? imageErrors : undefined,
+    barcodeErrors: barcodeErrors.length > 0 ? barcodeErrors : undefined
   };
 };
 
@@ -250,6 +270,8 @@ const handleMenuUpload = async (
     uploadApi?: "v1" | "v3";
     pollV3Job?: boolean;
     jobPollTimeoutMs?: number;
+    scenario13ItemCount?: number;
+    scenario13OmitCover?: boolean;
   },
   res: express.Response
 ): Promise<void> => {
@@ -259,6 +281,7 @@ const handleMenuUpload = async (
       ok: true,
       matchExistingMenu: put.matchExistingMenu,
       payloadDiffersFromStored: put.payloadDiffersFromStored,
+      payloadDiagnose: put.payloadDiagnose,
       put,
       hint:
         put.scenario === "webhook"
@@ -318,6 +341,8 @@ const readUploadParams = (
   uploadApi?: "v1" | "v3";
   pollV3Job?: boolean;
   jobPollTimeoutMs?: number;
+  scenario13ItemCount?: number;
+  scenario13OmitCover?: boolean;
 } => {
   const q = (key: string): string | undefined => {
     const value = query[key];
@@ -383,6 +408,13 @@ const readUploadParams = (
     q("jobPollTimeoutMs") ??
     (typeof body?.jobPollTimeoutMs === "number" ? String(body.jobPollTimeoutMs) : undefined);
   const jobPollTimeoutMs = jobPollTimeoutRaw ? Number(jobPollTimeoutRaw) : undefined;
+  const itemCountRaw =
+    q("itemCount") ??
+    (typeof body?.itemCount === "number" ? String(body.itemCount) : undefined);
+  const scenario13ItemCount =
+    itemCountRaw && Number.isFinite(Number(itemCountRaw)) ? Number(itemCountRaw) : undefined;
+  const scenario13OmitCover =
+    q("omitCover") === "true" || body?.omitCover === true || body?.scenario13OmitCover === true;
 
   return {
     menuId,
@@ -398,9 +430,51 @@ const readUploadParams = (
     scenario13PreferGet,
     uploadApi,
     pollV3Job,
-    jobPollTimeoutMs
+    jobPollTimeoutMs,
+    scenario13ItemCount,
+    scenario13OmitCover
   };
 };
+
+/** Scenario 13: inspect template payload without calling Deliveroo. */
+app.get("/deliveroo/menu/scenario13/diagnose", (req, res) => {
+  const menuId =
+    typeof req.query.menuId === "string" && req.query.menuId.length > 0
+      ? req.query.menuId
+      : "preview-menu-id";
+  const siteId =
+    typeof req.query.siteId === "string" && req.query.siteId.length > 0
+      ? req.query.siteId
+      : config.deliverooLocationId;
+  const itemCountRaw =
+    typeof req.query.itemCount === "string" ? Number(req.query.itemCount) : undefined;
+  const itemCount = Number.isFinite(itemCountRaw) ? itemCountRaw : SCENARIO13_ITEM_COUNT;
+  const { payload, diagnose } = buildScenario13PayloadForDiagnose(menuId, siteId, itemCount);
+  res.json({
+    ok: true,
+    menuId,
+    siteId,
+    itemCountRequested: itemCount,
+    diagnose,
+    payloadSample: {
+      name: payload.name,
+      site_ids: payload.site_ids,
+      menu: {
+        currency_code: (payload.menu as Record<string, unknown>)?.currency_code,
+        is_pos_integrated: (payload.menu as Record<string, unknown>)?.is_pos_integrated,
+        mealtimes: (payload.menu as Record<string, unknown>)?.mealtimes,
+        categoriesCount: Array.isArray((payload.menu as Record<string, unknown>)?.categories)
+          ? ((payload.menu as Record<string, unknown>).categories as unknown[]).length
+          : 0,
+        itemsCount: Array.isArray((payload.menu as Record<string, unknown>)?.items)
+          ? ((payload.menu as Record<string, unknown>).items as unknown[]).length
+          : 0
+      }
+    },
+    hint:
+      "Fix warnings before upload. A/B: upload with ?itemCount=20 to see if 500 is scale-related; ?omitCover=true to test without mealtime image."
+  });
+});
 
 app.get("/deliveroo/menu/webhook-status", (req, res) => {
   const menuId =
@@ -722,7 +796,9 @@ app.post("/deliveroo/menu/scenario13", async (req, res) => {
       pollV3Job: uploadParams.pollV3Job,
       jobPollTimeoutMs: Number.isFinite(uploadParams.jobPollTimeoutMs)
         ? uploadParams.jobPollTimeoutMs
-        : undefined
+        : undefined,
+      scenario13ItemCount: uploadParams.scenario13ItemCount,
+      scenario13OmitCover: uploadParams.scenario13OmitCover
     });
     const ok = step !== "all" || (!result.error && Boolean(result.post));
     res.status(ok ? 200 : 504).json({
@@ -845,7 +921,7 @@ app.post("/webhooks/deliveroo", async (req, res) => {
       const siteIds = Array.isArray(uploadResult.site_ids)
         ? uploadResult.site_ids.filter((id): id is string => typeof id === "string")
         : undefined;
-      const { processingError, imageErrors } = parseMenuUploadErrors(uploadResult);
+      const { processingError, imageErrors, barcodeErrors } = parseMenuUploadErrors(uploadResult);
 
       const normalized: NormalizedMenuEvent = {
         channel: "deliveroo",
@@ -858,6 +934,7 @@ app.post("/webhooks/deliveroo", async (req, res) => {
           typeof uploadResult.http_status === "number" ? uploadResult.http_status : undefined,
         processingError,
         imageErrors,
+        barcodeErrors,
         occurredAt: new Date().toISOString(),
         payload: parsed
       };
@@ -884,6 +961,7 @@ app.post("/webhooks/deliveroo", async (req, res) => {
         menuHttpStatus: normalized.httpStatus,
         processingError: normalized.processingError,
         imageErrors: normalized.imageErrors,
+        barcodeErrors: normalized.barcodeErrors,
         hmacVerified: true
       });
 

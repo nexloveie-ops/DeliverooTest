@@ -14,6 +14,7 @@ import {
   type WebhookUploadBodyStrategy
 } from "./menuPayloads.js";
 import { runMenuV3Upload } from "./deliverooMenuV3.js";
+import { diagnoseScenario13Payload } from "./scenario13Diagnose.js";
 import { waitForMenuUploadWebhook } from "./menuWebhookStore.js";
 import type {
   ItemAvailabilityStatus,
@@ -247,6 +248,9 @@ type UploadMenuOptions = {
   /** Poll V3 job status after publish (default true for scenario13 v3). */
   pollV3Job?: boolean;
   jobPollTimeoutMs?: number;
+  /** Scenario 13 debug: override item count (e.g. 20 for A/B). */
+  scenario13ItemCount?: number;
+  scenario13OmitCover?: boolean;
 };
 
 const sleep = (ms: number): Promise<void> =>
@@ -519,8 +523,13 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
     }
     // Default: clean 100-item template. Only use GET extend when ?preferGet=true.
     const built = buildScenario13MenuJson(menuId, siteId, revision, currentMenuJson, {
-      preferGet: options?.scenario13PreferGet === true
+      preferGet: options?.scenario13PreferGet === true,
+      itemCount: options?.scenario13ItemCount,
+      omitMealtimeImage: options?.scenario13OmitCover === true
     });
+    const payloadDiagnose = diagnoseScenario13Payload(
+      JSON.parse(built.bodyJson) as Record<string, unknown>
+    );
     bodySource =
       built.source === "get-extended" || built.source === "get-revision" ? "get" : "template";
     const bodyJson = built.bodyJson;
@@ -554,8 +563,10 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
           jobId: v3Steps.publishJob.jobId,
           jobStatus: v3Steps.jobPoll?.status,
           jobPollAttempts: v3Steps.jobPoll?.attempts,
-          s3HttpStatus: v3Steps.s3Upload.httpStatus
-        }
+          s3HttpStatus: v3Steps.s3Upload.httpStatus,
+          jobDeliveroo: v3Steps.jobPoll?.deliveroo
+        },
+        payloadDiagnose
       };
       console.log(
         JSON.stringify({
@@ -584,7 +595,8 @@ export const uploadDeliverooMenu = async (options?: UploadMenuOptions): Promise<
       deliveroo,
       bodySource,
       menuRevision: revision,
-      itemCount: built.itemCount
+      itemCount: built.itemCount,
+      payloadDiagnose
     };
     console.log(
       JSON.stringify({
@@ -1398,6 +1410,8 @@ export const runScenario13MenuAndUnavailabilities = async (options?: {
   scenario13PreferGet?: boolean;
   pollV3Job?: boolean;
   jobPollTimeoutMs?: number;
+  scenario13ItemCount?: number;
+  scenario13OmitCover?: boolean;
 }): Promise<Scenario13RunResult> => {
   const step = options?.step ?? "all";
   if (!options?.menuId?.trim()) {
@@ -1416,7 +1430,9 @@ export const runScenario13MenuAndUnavailabilities = async (options?: {
       scenario13PreferTemplate: options.scenario13PreferTemplate,
       scenario13PreferGet: options.scenario13PreferGet,
       pollV3Job: options.pollV3Job,
-      jobPollTimeoutMs: options.jobPollTimeoutMs
+      jobPollTimeoutMs: options.jobPollTimeoutMs,
+      scenario13ItemCount: options.scenario13ItemCount,
+      scenario13OmitCover: options.scenario13OmitCover
     });
   }
 

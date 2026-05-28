@@ -67,7 +67,9 @@ export const scenario13ItemId = (index: number): string =>
  * Public JPEG 1920×1080 for mealtime hero. Must allow Deliveroo servers (no 403).
  * Wikimedia returned 403 in webhook imageErrors; picsum allows hotlinking.
  */
-export const STABLE_MEALTIME_COVER_JPEG_URL = "https://picsum.photos/1920/1080";
+/** Fixed seed — stable URL for Deliveroo image cache (not random redirect per upload). */
+export const STABLE_MEALTIME_COVER_JPEG_URL =
+  "https://picsum.photos/seed/deliveroo-scenario13/1920/1080";
 
 /** Scenario 13 default mealtime hero (JPEG, 1920×1080 per guidelines). */
 export const SCENARIO13_MEALTIME_COVER_URL = STABLE_MEALTIME_COVER_JPEG_URL;
@@ -181,7 +183,9 @@ export const buildMenuPayload = (
     return buildMealtimesScenarioPayload(menuId, siteId, revision);
   }
   if (scenario === "scenario13") {
-    return buildScenario13LargeMenuPayload(menuId, siteId, revision);
+    return buildScenario13LargeMenuPayload(menuId, siteId, revision, {
+      itemCount: SCENARIO13_ITEM_COUNT
+    });
   }
   return buildMealtimesScenarioPayload(menuId, siteId);
 };
@@ -190,24 +194,38 @@ export const buildMenuPayload = (
  * Scenario 13: valid menu with ≥100 items (10×10 categories, no per-item images).
  * Per-item image URLs caused Deliveroo async processing http_status 500 in sandbox.
  */
+export type BuildScenario13Options = {
+  /** Portal requires ≥100; use 20/50 for A/B debugging via ?itemCount= */
+  itemCount?: number;
+  omitMealtimeImage?: boolean;
+};
+
 export const buildScenario13LargeMenuPayload = (
   menuId: string,
   siteId: string,
-  revision: string = String(Date.now())
+  revision: string = String(Date.now()),
+  options?: BuildScenario13Options
 ): Record<string, unknown> => {
+  const targetCount = Math.min(
+    500,
+    Math.max(1, options?.itemCount ?? SCENARIO13_ITEM_COUNT)
+  );
+  const categoryCount = Math.min(SCENARIO13_CATEGORY_COUNT, targetCount);
   const revSuffix = revision.slice(-6);
   const items: Record<string, unknown>[] = [];
   const categories: Record<string, unknown>[] = [];
   const categoryIds: string[] = [];
-  const itemsPerCategory = SCENARIO13_ITEM_COUNT / SCENARIO13_CATEGORY_COUNT;
 
-  for (let c = 0; c < SCENARIO13_CATEGORY_COUNT; c += 1) {
+  let itemIndex = 0;
+  for (let c = 0; c < categoryCount && itemIndex < targetCount; c += 1) {
     const categoryId = `s13-cat-${String(c + 1).padStart(2, "0")}`;
     categoryIds.push(categoryId);
     const categoryItemIds: string[] = [];
+    const slots = Math.ceil((targetCount - itemIndex) / (categoryCount - c));
 
-    for (let j = 1; j <= itemsPerCategory; j += 1) {
-      const i = c * itemsPerCategory + j;
+    for (let j = 0; j < slots && itemIndex < targetCount; j += 1) {
+      itemIndex += 1;
+      const i = itemIndex;
       const id = scenario13ItemId(i);
       categoryItemIds.push(id);
       items.push(
@@ -216,9 +234,9 @@ export const buildScenario13LargeMenuPayload = (
           type: "ITEM",
           name: { en: `S13 Item ${i}` },
           description: { en: `Item ${i} (rev ${revSuffix})` },
-          operational_name: `s13-${i}`,
+          operational_name: `s13item${i}`,
           plu: `S13${String(i).padStart(3, "0")}`,
-          price_info: { price: 500 + i, overrides: [] },
+          price_info: { price: 500 + i, overrides: [], fees: [] },
           modifier_ids: []
         })
       );
@@ -227,29 +245,30 @@ export const buildScenario13LargeMenuPayload = (
     categories.push({
       id: categoryId,
       name: { en: `Category ${c + 1}` },
+      description: { en: `Scenario 13 category ${c + 1}` },
       item_ids: categoryItemIds
     });
   }
 
   const mealtimeId = "s13-meal-all-day";
+  const mealtime: Record<string, unknown> = {
+    id: mealtimeId,
+    name: { en: "All Day Menu" },
+    description: {
+      en: `Scenario 13 menu (${targetCount} items, rev ${revSuffix})`
+    },
+    category_ids: categoryIds,
+    schedule: []
+  };
+  if (!options?.omitMealtimeImage) {
+    mealtime.image = { url: SCENARIO13_MEALTIME_COVER_URL };
+  }
 
   const menu: Record<string, unknown> = {
     categories,
     items,
     modifiers: [],
-    mealtimes: [
-        {
-          id: mealtimeId,
-          name: { en: "All Day Menu" },
-          description: {
-            en: `Scenario 13 (${SCENARIO13_ITEM_COUNT} items, rev ${revSuffix})`
-          },
-          category_ids: categoryIds,
-          image: { url: SCENARIO13_MEALTIME_COVER_URL },
-          /** Default mealtime (no schedule) per Menu API Guidelines — 7D/24H not required. */
-          schedule: []
-        }
-      ]
+    mealtimes: [mealtime]
   };
   ensureMenuPublishFields(menu);
 
@@ -396,7 +415,7 @@ export const buildScenario13MenuJson = (
   siteId: string,
   revision: string,
   currentMenuJson?: string,
-  options?: { preferGet?: boolean }
+  options?: { preferGet?: boolean; itemCount?: number; omitMealtimeImage?: boolean }
 ): { bodyJson: string; source: Scenario13BodySource; itemCount: number } => {
   if (currentMenuJson && options?.preferGet === true) {
     try {
@@ -433,7 +452,10 @@ export const buildScenario13MenuJson = (
     }
   }
 
-  const payload = buildScenario13LargeMenuPayload(menuId, siteId, revision);
+  const payload = buildScenario13LargeMenuPayload(menuId, siteId, revision, {
+    itemCount: options?.itemCount,
+    omitMealtimeImage: options?.omitMealtimeImage
+  });
   const menu = toRecord(payload.menu);
   return {
     bodyJson: JSON.stringify(payload),

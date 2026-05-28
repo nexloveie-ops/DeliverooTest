@@ -15,6 +15,7 @@ import {
   generateMenuV3S3UploadUrl,
   runScenario13MenuAndUnavailabilities,
   runScenario15MenuV3Async,
+  fetchScenario16MenuV3JobStatus,
   SCENARIO13_UNAVAILABILITY_POST,
   updateItemUnavailabilities,
   uploadDeliverooMenu
@@ -554,6 +555,67 @@ app.post("/deliveroo/menu/scenario15", async (req, res) => {
     res.status(500).json({ ok: false, error: message, detail: deliverooAxiosDetail(error) });
   }
 });
+
+const readScenario16Params = (
+  query: express.Request["query"],
+  body?: Record<string, unknown>
+): { jobId?: string; brandId?: string; siteId?: string; siteDrnId?: string } => {
+  const pick = (key: string, alt?: string): string | undefined => {
+    const q = query[key];
+    if (typeof q === "string" && q.length > 0) return q;
+    if (alt) {
+      const qa = query[alt];
+      if (typeof qa === "string" && qa.length > 0) return qa;
+    }
+    const b = body?.[key];
+    if (typeof b === "string" && b.length > 0) return b;
+    if (alt) {
+      const ba = body?.[alt];
+      if (typeof ba === "string" && ba.length > 0) return ba;
+    }
+    return undefined;
+  };
+  return {
+    jobId: pick("jobId", "job_id"),
+    brandId: pick("brandId", "brand_id"),
+    siteId: pick("siteId", "site_id"),
+    siteDrnId: pick("siteDrnId", "site_drn_id")
+  };
+};
+
+const handleScenario16JobStatus = async (
+  req: express.Request,
+  res: express.Response
+): Promise<void> => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const params = readScenario16Params(req.query, body);
+
+  if (!params.jobId) {
+    res.status(400).json({
+      ok: false,
+      error:
+        "jobId is required for Scenario 16 (use job_id from Scenario 15 upload.upload.jobId or Portal)"
+    });
+    return;
+  }
+
+  try {
+    const result = await fetchScenario16MenuV3JobStatus(params);
+    res.json({
+      ok: true,
+      scenario: 16,
+      ...result,
+      hint:
+        "Scenario 16 validates GET job status. jobId from Scenario 15: upload.jobId (e.g. after POST scenario15?step=upload)."
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    res.status(500).json({ ok: false, error: message, detail: deliverooAxiosDetail(error) });
+  }
+};
+
+app.get("/deliveroo/menu/scenario16", handleScenario16JobStatus);
+app.post("/deliveroo/menu/scenario16", handleScenario16JobStatus);
 
 /** Scenario 13: inspect template payload without calling Deliveroo. */
 app.get("/deliveroo/menu/scenario13/diagnose", (req, res) => {

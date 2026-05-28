@@ -154,6 +154,16 @@ export type Scenario13RunResult = {
   error?: string;
 };
 
+/** Scenario 16: GET /menu/v3/brands/{brand_id}/jobs/{job_id}. */
+export type Scenario16JobStatusResult = {
+  method: "GET";
+  url: string;
+  brandId: string;
+  jobId: string;
+  status?: string;
+  deliveroo: unknown;
+};
+
 /** Scenario 15: Menu V3 S3 upload + publish job + menu.upload_result webhook. */
 export type Scenario15RunResult = {
   brandId?: string;

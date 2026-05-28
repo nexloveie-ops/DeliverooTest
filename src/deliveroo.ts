@@ -14,7 +14,11 @@ import {
   SCENARIO13_ITEM_COUNT,
   type WebhookUploadBodyStrategy
 } from "./menuPayloads.js";
-import { createMenuV3PresignedUpload, runMenuV3Upload } from "./deliverooMenuV3.js";
+import {
+  createMenuV3PresignedUpload,
+  getMenuV3JobStatus,
+  runMenuV3Upload
+} from "./deliverooMenuV3.js";
 import { diagnoseScenario13Payload } from "./scenario13Diagnose.js";
 import { waitForMenuUploadWebhook } from "./menuWebhookStore.js";
 import type {
@@ -38,6 +42,7 @@ import type {
   Scenario13RunResult,
   Scenario14S3UploadUrlResult,
   Scenario15RunResult,
+  Scenario16JobStatusResult,
   UploadMenuResult
 } from "./types.js";
 
@@ -1532,6 +1537,52 @@ export const runScenario15MenuV3Async = async (options?: {
   }
 
   return out;
+};
+
+/**
+ * Scenario 16: GET /menu/v3/brands/{brand_id}/jobs/{job_id} — fetch menu upload job status.
+ * Use job_id from Scenario 15 upload (`upload.jobId`) or Portal.
+ */
+export const fetchScenario16MenuV3JobStatus = async (options?: {
+  jobId?: string;
+  brandId?: string;
+  siteId?: string;
+  siteDrnId?: string;
+}): Promise<Scenario16JobStatusResult> => {
+  if (!options?.jobId?.trim()) {
+    throw new Error("jobId is required for Scenario 16 (from Scenario 15 upload or Portal)");
+  }
+  const jobId = options.jobId.trim();
+  const token = await getAccessToken();
+
+  let brandId = options.brandId?.trim();
+  if (!brandId) {
+    const context = await resolveSiteContext(token, {
+      siteId: options.siteId,
+      siteDrnId: options.siteDrnId
+    });
+    brandId = context.brandId;
+  }
+
+  const result = await getMenuV3JobStatus(brandId, jobId, token);
+
+  console.log(
+    JSON.stringify({
+      msg: "deliveroo.menu.scenario16.job_status",
+      brandId,
+      jobId,
+      status: result.status
+    })
+  );
+
+  return {
+    method: "GET",
+    url: result.url,
+    brandId,
+    jobId,
+    status: result.status,
+    deliveroo: result.deliveroo
+  };
 };
 
 /** Scenario 13: first large-menu item marked unavailable after upload webhook. */

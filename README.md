@@ -40,6 +40,7 @@ Use **API Suite** sandbox credentials in Cloud Run — not “Credentials for Sc
 | POST | `/deliveroo/menu/scenario13` | Scenario 13: upload ≥100 items, wait webhook, POST unavailabilities (`step=all`) |
 | PUT/POST | `/deliveroo/menu/scenario14` | Scenario 14: Menu V3 **Generate S3 upload URL** only (`PUT .../menu/v3/brands/{brand}/menus/{id}`) |
 | POST | `/deliveroo/menu/scenario15` | Scenario 15: Menu V3 async upload (S3 + publish job + `menu.upload_result` webhook) |
+| GET/POST | `/deliveroo/menu/scenario16` | Scenario 16: Menu V3 **GET job status** (`.../brands/{brand}/jobs/{job_id}`) |
 | POST | `/webhooks/deliveroo` | Order events + `menu.upload_result` |
 
 ### Menu upload (`/deliveroo/menu/upload`)
@@ -173,6 +174,19 @@ curl -X POST ".../deliveroo/menu/scenario15?step=wait" -H "Content-Type: applica
 ```
 
 Payload includes 1 mealtime (cover + name + description), 1 category (name), 1 item (id, name, operational_name, PLU, description, linked via `category.item_ids`).
+
+**Scenario 16 ([MENU V3 APIs]):** After Scenario 15 (or any V3 publish job), Portal checks **GET job status** with `brand_id` + `job_id`. Use `jobId` from Scenario 15 response (`upload.jobId`).
+
+```bash
+# job_id from Scenario 15 upload (example):
+curl "https://<cloud-run-url>/deliveroo/menu/scenario16?jobId=8b7f99c9-12bc-40f1-a940-da5e9d1522f4&site_drn_id=607326a3-ef2d-4b8b-b013-a91c52c3954f"
+
+curl -X POST "https://<cloud-run-url>/deliveroo/menu/scenario16" \
+  -H "Content-Type: application/json" \
+  -d '{"jobId":"<job-id>","site_drn_id":"607326a3-ef2d-4b8b-b013-a91c52c3954f"}'
+```
+
+Official endpoint: `GET {DELIVEROO_BASE_URL}/menu/v3/brands/{brand_id}/jobs/{job_id}` ([Fetch Job Status](https://api-docs.deliveroo.com/reference/get_v3-brands-brand-id-jobs-job-id)).
 
 **Scenario 13:** Do **not** send unavailabilities until **`menu.upload_result`** webhook arrives (unless upload returned `MATCH_EXISTING_MENU`). Flow: **Start** → upload menu with **≥100 items** → wait for webhook (~1 min) → **POST** item unavailabilities.
 
